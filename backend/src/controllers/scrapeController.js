@@ -4,8 +4,10 @@ const mercadoLivreScraper = require('../services/mercadoLivreScraper');
 const centauroScraper = require('../services/centauroScraper');
 const netshoesScraper = require('../services/netshoesScraper');
 const nikeScraper = require('../services/nikeScraper');
+const shopeeScraper = require('../services/shopeeScraper');
 const linkResolver = require('../utils/linkResolver');
 const whatsappService = require('../services/whatsappService');
+const geminiService = require('../services/geminiService');
 
 exports.scrapeProduct = async (req, res) => {
   try {
@@ -25,6 +27,9 @@ exports.scrapeProduct = async (req, res) => {
     
     // Verificar se é link da Rakuten (Netshoes)
     const isRakutenAffiliate = url.includes('tiny.cc/');
+    
+    // Verificar se é link de afiliado da Shopee
+    const isShopeeAffiliate = url.includes('shopee.com.br') || url.includes('s.shopee.com.br');
     
     // Verificar se os links de afiliados podem ser passados diretamente para os scrapers específicos
     if (isMercadoLivreAffiliate) {
@@ -59,6 +64,22 @@ exports.scrapeProduct = async (req, res) => {
       return res.json(productData);
     }
     
+    if (isShopeeAffiliate) {
+      console.log('Link da Shopee detectado. Usando scraper direto.');
+      
+      // Para Shopee, sempre retornamos os dados mesmo que sejam limitados
+      const productData = await shopeeScraper.scrapeProductData(url);
+      productData.productUrl = url;
+      console.log('Dados do produto extraídos com sucesso:', productData);
+      
+      // Se é um placeholder, indicamos na resposta mas não tratamos como erro
+      if (productData.isPlaceholder) {
+        console.log('Dados limitados da Shopee - usando fallback');
+      }
+      
+      return res.json(productData);
+    }
+    
     // Para outros links, resolver URL e determinar qual scraper usar
     const resolvedUrl = await linkResolver.resolveUrl(url);
     console.log(`URL resolvida: ${resolvedUrl}`);
@@ -90,8 +111,18 @@ exports.scrapeProduct = async (req, res) => {
     ) {
       console.log('Usando Nike Scraper');
       productData = await nikeScraper.scrapeProductData(resolvedUrl);
+    } else if (
+      resolvedUrl.includes('shopee.com.br')
+    ) {
+      console.log('Usando Shopee Scraper');
+      productData = await shopeeScraper.scrapeProductData(resolvedUrl);
+      
+      // Para Shopee, mesmo com dados limitados, continuamos
+      if (productData.isPlaceholder) {
+        console.log('Dados limitados da Shopee - usando fallback');
+      }
     } else {
-      return res.status(400).json({ error: 'URL não suportada. Apenas Amazon, Mercado Livre, Centauro, Netshoes e Nike são suportados.' });
+      return res.status(400).json({ error: 'URL não suportada. Apenas Amazon, Mercado Livre, Centauro, Netshoes, Nike e Shopee são suportados.' });
     }
     
     productData.productUrl = url;
@@ -125,5 +156,37 @@ exports.sendWhatsApp = async (req, res) => {
   } catch (error) {
     console.error('Erro ao enviar mensagem:', error);
     res.status(500).json({ error: 'Falha ao enviar mensagem', details: error.message });
+  }
+};
+
+exports.generateAIImage = async (req, res) => {
+  try {
+    const { prompt, apiKey, productData } = req.body;
+    
+    if (!prompt || !apiKey || !productData) {
+      return res.status(400).json({ 
+        error: 'Prompt, chave de API e dados do produto são obrigatórios' 
+      });
+    }
+    
+    console.log(`Iniciando geração de imagem com prompt: "${prompt}"`);
+    
+    const result = await geminiService.generateImage(prompt, apiKey, productData);
+    
+    if (result.success) {
+      // Transformar URL relativa em URL completa
+      const baseUrl = req.protocol + '://' + req.get('host');
+      result.imageUrl = baseUrl + result.imageUrl;
+      
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+  } catch (error) {
+    console.error('Erro ao gerar imagem com IA:', error);
+    res.status(500).json({ 
+      error: 'Falha ao gerar imagem com IA', 
+      details: error.message 
+    });
   }
 };

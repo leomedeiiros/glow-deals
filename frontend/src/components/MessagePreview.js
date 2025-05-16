@@ -10,21 +10,45 @@ const MessagePreview = ({
   discountValue,
   setFinalMessage
 }) => {
-  // Função para formatar o preço (agora arredonda para baixo)
+  // Função para formatar o preço (preservando os milhares)
   const formatPrice = (price) => {
     if (!price) return '';
     
-    // Arredondar para baixo (remover centavos)
-    if (price.includes(',')) {
-      return price.split(',')[0].trim();
+    // Limpar a string para manter apenas números, vírgulas e pontos
+    let cleanPrice = String(price).replace(/[^\d,\.]/g, '');
+    
+    // Formato brasileiro: 1.299,90
+    if (cleanPrice.includes(',')) {
+      return cleanPrice.split(',')[0];
     }
     
-    // Se o preço contém ponto, assume que é separador decimal
-    if (price.includes('.')) {
-      return price.split('.')[0].trim();
+    // Formato americano ou apenas com ponto decimal: 1,299.90 ou 1299.90
+    if (cleanPrice.includes('.')) {
+      return cleanPrice.split('.')[0];
     }
     
-    return price.trim();
+    return cleanPrice;
+  };
+  
+  // Função para converter string de preço para número para cálculos
+  const priceToNumber = (priceStr) => {
+    if (!priceStr) return 0;
+    
+    // Converter para string se não for
+    const priceString = String(priceStr);
+    
+    // Formato brasileiro: 1.299,90 (ponto como separador de milhar, vírgula como decimal)
+    if (priceString.includes(',')) {
+      return parseFloat(priceString.replace(/\./g, '').replace(',', '.'));
+    }
+    
+    // Formato americano: 1,299.90 (vírgula como separador de milhar, ponto como decimal)
+    if (priceString.includes('.')) {
+      return parseFloat(priceString.replace(/,/g, ''));
+    }
+    
+    // Apenas números
+    return parseFloat(priceString);
   };
   
   // Função para calcular preço com desconto percentual
@@ -33,15 +57,8 @@ const MessagePreview = ({
       return currentPrice;
     }
     
-    // Converter o preço para número
-    let priceNum;
-    if (currentPrice.includes(',')) {
-      // Se o preço já está no formato brasileiro (ex: "159,99")
-      priceNum = parseFloat(currentPrice.replace('.', '').replace(',', '.'));
-    } else {
-      // Se o preço está com ponto decimal
-      priceNum = parseFloat(currentPrice);
-    }
+    // Converter o preço para número para cálculos
+    const priceNum = priceToNumber(currentPrice);
     
     if (isNaN(priceNum)) {
       return currentPrice;
@@ -51,7 +68,7 @@ const MessagePreview = ({
     const discountRate = parseFloat(discountPercentage) / 100;
     const discountedPrice = priceNum * (1 - discountRate);
     
-    // Arredondar para baixo (remover centavos)
+    // Arredondar para baixo e converter para string
     return Math.floor(discountedPrice).toString();
   };
   
@@ -61,15 +78,8 @@ const MessagePreview = ({
       return currentPrice;
     }
     
-    // Converter o preço para número
-    let priceNum;
-    if (currentPrice.includes(',')) {
-      // Se o preço já está no formato brasileiro (ex: "159,99")
-      priceNum = parseFloat(currentPrice.replace('.', '').replace(',', '.'));
-    } else {
-      // Se o preço está com ponto decimal
-      priceNum = parseFloat(currentPrice);
-    }
+    // Converter o preço para número para cálculos
+    const priceNum = priceToNumber(currentPrice);
     
     if (isNaN(priceNum)) {
       return currentPrice;
@@ -84,7 +94,7 @@ const MessagePreview = ({
       return "1"; // Preço mínimo de R$ 1
     }
     
-    // Arredondar para baixo (remover centavos)
+    // Arredondar para baixo e converter para string
     return Math.floor(discountedPrice).toString();
   };
   
@@ -99,12 +109,12 @@ const MessagePreview = ({
     
     // Remover prefixos e sufixos comuns que podem aparecer nos nomes das lojas
     let cleanName = vendorName
+      .replace(/^Vendido\s+por/i, '')
       .replace(/^Loja\s+oficial\s+/i, '')
       .replace(/^Loja\s+/i, '')
       .replace(/^oficial\s*/i, '')
       .replace(/\s*oficial$/i, '')
       .replace(/\s*oficial\s*/i, ' ')
-      .replace(/vendido por/i, '')
       .trim();
     
     return cleanName;
@@ -114,9 +124,9 @@ const MessagePreview = ({
   const hasRealDiscount = (originalPrice, currentPrice) => {
     if (!originalPrice || !currentPrice) return false;
     
-    // Converter preços para números (após remoção de centavos)
-    const originalValue = parseInt(formatPrice(originalPrice).replace(/\./g, ''));
-    const currentValue = parseInt(formatPrice(currentPrice).replace(/\./g, ''));
+    // Converter preços para números para comparar
+    const originalValue = priceToNumber(originalPrice);
+    const currentValue = priceToNumber(currentPrice);
     
     // Verificar se o preço original é significativamente maior que o atual
     // (diferença mínima de 5% para considerar como desconto real)
@@ -134,6 +144,7 @@ const MessagePreview = ({
     const isNike = productData.platform === 'nike' || (productData.vendor && productData.vendor.toLowerCase().includes('nike'));
     const isCentauro = productData.platform === 'centauro' || (productData.vendor && productData.vendor.toLowerCase().includes('centauro'));
     const isNetshoes = productData.platform === 'netshoes' || (productData.vendor && productData.vendor.toLowerCase().includes('netshoes'));
+    const isShopee = productData.platform === 'shopee' || (productData.vendor && productData.vendor.toLowerCase().includes('shopee'));
     
     // Valores fixos para cada tipo de loja
     if (storeType === 'amazon') {
@@ -150,6 +161,9 @@ const MessagePreview = ({
       if (isNetshoes) {
         return 'Loja oficial Netshoes no Mercado Livre';
       }
+      if (isShopee) {
+        return 'Loja oficial na Shopee';
+      }
       
       if (productData.vendor && productData.vendor !== 'Mercado Livre') {
         // Limpar nome do vendedor e garantir bom espaçamento
@@ -161,6 +175,9 @@ const MessagePreview = ({
     }
     
     if (storeType === 'loja_validada') {
+      if (isShopee) {
+        return 'Loja validada na Shopee';
+      }
       return 'Loja validada no Mercado Livre';
     }
     
@@ -185,7 +202,23 @@ const MessagePreview = ({
   const generateMessage = () => {
     if (!productData) return '';
     
-    const { name, currentPrice, originalPrice, productUrl } = productData;
+    // Utilize displayPrice e displayOriginalPrice se disponíveis, senão use os normais
+    const { name, productUrl } = productData;
+    
+    // Use os campos de exibição se disponíveis, senão utilize os campos padrão
+    const rawCurrentPrice = productData.currentPrice;
+    const rawOriginalPrice = productData.originalPrice;
+    
+    // Usar os campos de exibição formatados se estiverem disponíveis
+    const processedCurrentPrice = productData.displayPrice || formatPrice(rawCurrentPrice);
+    const processedOriginalPrice = productData.displayOriginalPrice || formatPrice(rawOriginalPrice);
+    
+    console.log("Preços para mensagem:", {
+      rawCurrent: rawCurrentPrice,
+      rawOriginal: rawOriginalPrice,
+      processed: processedCurrentPrice,
+      processedOriginal: processedOriginalPrice
+    });
     
     // IMPORTANTE: Sempre obter o texto do tipo de loja da função getStoreTypeText
     // Não gerar o texto aqui para garantir consistência
@@ -193,27 +226,38 @@ const MessagePreview = ({
     
     let priceText = '';
     
-    // Processar preço atual para remover centavos
-    const processedCurrentPrice = formatPrice(currentPrice);
-    
-    // Determinar preço final (com possíveis descontos)
+    // Para cálculos de desconto, usar os preços originais com decimais
+    // mas para exibição, usar os preços formatados sem centavos
     let finalPrice = processedCurrentPrice;
-    if (discountPercentage) {
-      finalPrice = calculatePercentageDiscount(processedCurrentPrice);
-    } else if (discountValue) {
-      finalPrice = calculateValueDiscount(processedCurrentPrice);
-    }
+    let calculatedPrice;
     
-    // Processar preço original para remover centavos
-    const processedOriginalPrice = formatPrice(originalPrice);
+    if (discountPercentage) {
+      calculatedPrice = calculatePercentageDiscount(rawCurrentPrice);
+      // Se o preço calculado for muito diferente, usar o preço formatado
+      if (calculatedPrice === "1" || calculatedPrice === "2" || calculatedPrice === "3") {
+        console.log("Ajuste para desconto percentual aplicado");
+        finalPrice = processedCurrentPrice;
+      } else {
+        finalPrice = calculatedPrice;
+      }
+    } else if (discountValue) {
+      calculatedPrice = calculateValueDiscount(rawCurrentPrice);
+      // Se o preço calculado for muito diferente, usar o preço formatado
+      if (calculatedPrice === "1" || calculatedPrice === "2" || calculatedPrice === "3") {
+        console.log("Ajuste para desconto em valor aplicado");
+        finalPrice = processedCurrentPrice;
+      } else {
+        finalPrice = calculatedPrice;
+      }
+    }
     
     // Para Amazon, mostrar apenas o preço atual (sem o original)
     if (isAmazon) {
       priceText = `✅  Por *R$ ${finalPrice}*`;
     } else {
-      // Para todas as outras lojas (Mercado Livre, Nike, Centauro, etc),
+      // Para todas as outras lojas (Mercado Livre, Nike, Centauro, Shopee, etc),
       // SEMPRE mostrar o formato De/Por quando há um preço original
-      if (processedOriginalPrice && hasRealDiscount(processedOriginalPrice, finalPrice)) {
+      if (processedOriginalPrice && hasRealDiscount(rawOriginalPrice, finalPrice)) {
         priceText = `✅  ~De R$ ${processedOriginalPrice}~ por *R$ ${finalPrice}*`;
       } else {
         // Caso não tenha desconto, mostrar apenas o preço atual
@@ -236,7 +280,7 @@ const MessagePreview = ({
     // Adicionar link do produto
     message += `\n🛒 ${productUrl}`;
     
-    message += `\n\n☑️ Link do grupo: https://linktr.ee/gdfit`;
+    message += `\n\n☑️ Link do grupo: https://linktr.ee/techdealsbr`;
     
     return message;
   };

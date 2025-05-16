@@ -23,6 +23,12 @@ exports.resolveUrl = async (shortenedUrl) => {
     return shortenedUrl; // Mantém o link original para links de afiliado da Rakuten
   }
   
+  // Verificar se é link da Shopee
+  if (shortenedUrl.includes('shopee.com.br')) {
+    console.log(`Link da Shopee detectado: ${shortenedUrl}`);
+    return shortenedUrl; // Mantém o link original para links da Shopee
+  }
+  
   const browser = await puppeteer.launch({
     headless: 'new',
     args: [
@@ -147,6 +153,11 @@ exports.resolveUrl = async (shortenedUrl) => {
     
     // Para links da Nike
     if (resolvedUrl.includes('nike.com.br') || resolvedUrl.includes('nike.com/br')) {
+      return resolvedUrl;
+    }
+    
+    // Para links da Shopee
+    if (resolvedUrl.includes('shopee.com.br')) {
       return resolvedUrl;
     }
     

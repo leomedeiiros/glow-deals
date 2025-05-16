@@ -68,4 +68,7 @@ router.post('/upload-image', upload.single('image'), (req, res) => {
   }
 });
 
+// Rota para geração de imagem com IA
+router.post('/generate-ai-image', scrapeController.generateAIImage);
+
 module.exports = router;

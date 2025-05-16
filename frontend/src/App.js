@@ -1,10 +1,12 @@
 // frontend/src/App.js
+// No topo do arquivo App.js
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 import LinkForm from './components/LinkForm';
 import MessagePreview from './components/MessagePreview';
-import { API_BASE_URL } from './config';
+import { API_BASE_URL } from './config';  // Importando do lugar correto
+import { scrapeProduct, uploadImage, sendWhatsAppMessage } from './services/api';  // Removi generateAIImage da importação
 
 function App() {
   // Carregar dados salvos do localStorage
@@ -32,6 +34,21 @@ function App() {
   const [recentCoupons, setRecentCoupons] = useState(loadFromLocalStorage('recentCoupons', []));
   const [recentDiscounts, setRecentDiscounts] = useState(loadFromLocalStorage('recentDiscounts', []));
   const [recentDiscountValues, setRecentDiscountValues] = useState(loadFromLocalStorage('recentDiscountValues', []));
+  
+  // NOVO: Processamento em massa
+  const [batchLinks, setBatchLinks] = useState('');
+  const [batchProcessing, setBatchProcessing] = useState(false);
+  const [batchResults, setBatchResults] = useState([]);
+  const [batchSectionOpen, setBatchSectionOpen] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  
+  // NOVO: API Gemini e títulos divertidos
+  // Token fixo para API Gemini - não precisa mais de estado ou input do usuário
+  const geminiApiKey = 'AIzaSyAZQbdDzDs3shmUTLpB3v3kfE_CE6R8SLo';
+  const [generatedTitle, setGeneratedTitle] = useState('');
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [titlePrompt, setTitlePrompt] = useState('Gere um título divertido e criativo');
+  const [aiImageSectionOpen, setAiImageSectionOpen] = useState(false);
 
   const [url, setUrl] = useState('');
   const [productData, setProductData] = useState(null);
@@ -96,13 +113,51 @@ function App() {
     setter(newArray);
   };
 
-  const handleProductDataReceived = (data, url) => {
-    // Arredondar preços para baixo (remover centavos)
-    if (data && data.currentPrice) {
-      data.currentPrice = roundPriceDown(data.currentPrice);
+  // Converte preço para formato numérico para cálculos (preserva para funções de desconto)
+  const priceToNumber = (priceStr) => {
+    if (!priceStr) return 0;
+    
+    // Converter para string se não for
+    const priceString = String(priceStr);
+    
+    // Formato brasileiro (1.299,90) -> 1299.90
+    if (priceString.includes(',')) {
+      return parseFloat(priceString.replace(/\./g, '').replace(',', '.'));
     }
-    if (data && data.originalPrice) {
-      data.originalPrice = roundPriceDown(data.originalPrice);
+    
+    // Formato americano ou já numérico
+    return parseFloat(priceString);
+  };
+
+  // SOLUÇÃO PARA PREÇOS ACIMA DE 999 QUE PRESERVA FUNCIONALIDADE DE DESCONTOS
+  const handleProductDataReceived = (data, url) => {
+    if (data) {
+      console.log("Dados originais do produto:", {
+        currentPrice: data.currentPrice,
+        originalPrice: data.originalPrice
+      });
+      
+      // Criar cópias dos preços originais para uso nos cálculos de desconto
+      // Isso garante que o desconto seja calculado corretamente
+      if (data.currentPrice) {
+        data.displayPrice = data.currentPrice;
+        
+        // Verificar se precisamos remover centavos mantendo o formato de milhar
+        if (typeof data.displayPrice === 'string' && data.displayPrice.includes(',')) {
+          data.displayPrice = data.displayPrice.split(',')[0];
+          console.log("Preço de exibição corrigido para:", data.displayPrice);
+        }
+      }
+      
+      if (data.originalPrice) {
+        data.displayOriginalPrice = data.originalPrice;
+        
+        // Verificar se precisamos remover centavos mantendo o formato de milhar
+        if (typeof data.displayOriginalPrice === 'string' && data.displayOriginalPrice.includes(',')) {
+          data.displayOriginalPrice = data.displayOriginalPrice.split(',')[0];
+          console.log("Preço original de exibição corrigido para:", data.displayOriginalPrice);
+        }
+      }
     }
     
     setProductData(data);
@@ -143,6 +198,12 @@ function App() {
       (data.vendor && data.vendor.toLowerCase().includes('nike')) ||
       (data.platform && typeof data.platform === 'string' && 
        data.platform.toLowerCase().includes('nike'));
+
+    const isShopee = 
+      (url && url.includes('shopee.com.br')) ||
+      (data.vendor && data.vendor.toLowerCase().includes('shopee')) ||
+      (data.platform && typeof data.platform === 'string' && 
+       data.platform.toLowerCase().includes('shopee'));
       
     // DEFINIR TIPO DE LOJA PADRÃO
     if (isAmazon) {
@@ -150,6 +211,8 @@ function App() {
     } else if (isMercadoLivre) {
       // Para o Mercado Livre, definir SEMPRE como "loja_oficial" por padrão
       setStoreType('loja_oficial');
+    } else if (isShopee) {
+      setStoreType('loja_validada');
     } else if (isCentauro || isNetshoes || isNike) {
       // Para lojas esportivas, definir como "loja_oficial" por padrão
       setStoreType('loja_oficial');
@@ -171,23 +234,6 @@ function App() {
     }, 300);
   };
   
-  // Função para arredondar preço para baixo (remover centavos)
-  const roundPriceDown = (price) => {
-    if (!price) return price;
-    
-    // Se contém vírgula, pega apenas a parte antes da vírgula
-    if (price.includes(',')) {
-      return price.split(',')[0];
-    }
-    
-    // Se contém ponto, assume que é separador decimal
-    if (price.includes('.')) {
-      return price.split('.')[0];
-    }
-    
-    return price;
-  };
-  
   const toggleSection = (section, e) => {
     // Prevenir propagação do evento para evitar que o clique chegue ao elemento pai
     if (e) {
@@ -205,11 +251,17 @@ function App() {
       case 'image':
         setImageSectionOpen(!imageSectionOpen);
         break;
+      case 'batch': // NOVO
+        setBatchSectionOpen(!batchSectionOpen);
+        break;
+      case 'aiImage': // NOVO
+        setAiImageSectionOpen(!aiImageSectionOpen);
+        break;
       default:
         break;
     }
   };
-  // Handler para cupom de desconto
+// Handler para cupom de desconto
   const handleCouponChange = (value) => {
     setCouponCode(value);
     if (value) {
@@ -265,14 +317,10 @@ function App() {
       setUploadingImage(true);
       setError('');
       
-      const response = await axios.post(`${API_BASE_URL}/api/upload-image`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const response = await uploadImage(file);
       
-      if (response.data.success) {
-        setCustomImage(response.data.imageUrl);
+      if (response.success) {
+        setCustomImage(response.imageUrl);
       } else {
         setError('Erro ao fazer upload da imagem');
       }
@@ -284,6 +332,90 @@ function App() {
       );
     } finally {
       setUploadingImage(false);
+    }
+  };
+  
+  // NOVO: Handler para geração de título divertido com IA
+  const handleGenerateTitle = async () => {
+    if (!productData) {
+      setError('Você precisa extrair os dados de um produto primeiro.');
+      return;
+    }
+    
+    try {
+      setGeneratingTitle(true);
+      setError('');
+      
+      // Criando um prompt mais específico
+      const fullPrompt = `Crie um título divertido, criativo e curto (máximo 50 caracteres) para um anúncio de produto no WhatsApp. 
+      O produto é: ${productData.name}. 
+      O título deve ser algo que chame atenção e seja humorístico, similar a estes exemplos: 
+      "UNICO VEICULO QUE CONSIGO COMPRAR" para uma bicicleta,
+      "NEO QLED DA SAMSUNG TEM QUALIDADE ABSURDA" para uma TV,
+      "O UNICO TIGRINHO QUE VIRA INVESTIR" para cuecas da Puma.
+      Use LETRAS MAIÚSCULAS para todo o título.
+      Responda APENAS com o título, sem nenhum texto adicional.
+      ${titlePrompt ? titlePrompt : ''}`;
+      
+      // Chamada API para o Gemini Text
+      const response = await axios.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
+        contents: [{ parts: [{ text: fullPrompt }] }],
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 50
+        }
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': geminiApiKey
+        }
+      });
+      
+      // Extrair o texto gerado 
+      if (response.data && 
+          response.data.candidates && 
+          response.data.candidates[0] && 
+          response.data.candidates[0].content &&
+          response.data.candidates[0].content.parts) {
+        
+        const generatedText = response.data.candidates[0].content.parts[0].text;
+        console.log("Título gerado:", generatedText);
+        
+        // Limpar e formatar o título (remover aspas, ajustar espaços)
+        const cleanTitle = generatedText.replace(/^["'\s]+|["'\s]+$/g, '');
+        
+        // Atualizar a mensagem final com o título
+        setGeneratedTitle(cleanTitle);
+        
+        // Atualizar a mensagem editável com o novo título
+        if (messagePreviewRef.current && finalMessage) {
+          let updatedMessage = finalMessage;
+          // Se já tiver um título em asteriscos ou itálico, substituir; caso contrário, adicionar no início
+          if (updatedMessage.startsWith('_') && updatedMessage.includes('_\n')) {
+            // Substituir o título existente
+            updatedMessage = updatedMessage.replace(/^_[^_\n]*_/, `_${cleanTitle}_`);
+          } else if (updatedMessage.startsWith('*') && updatedMessage.includes('*\n')) {
+            // Substituir o título existente (em negrito)
+            updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage.substring(updatedMessage.indexOf('\n\n') + 2);
+          } else {
+            // Adicionar um novo título no início em itálico
+            updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage;
+          }
+          setFinalMessage(updatedMessage);
+          messagePreviewRef.current.innerHTML = updatedMessage;
+        }
+        
+      } else {
+        setError('Não foi possível gerar um título. Tente novamente.');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar título com IA:', error);
+      setError(
+        error.response?.data?.error?.message || 
+        'Falha ao gerar título. Verifique sua conexão e tente novamente.'
+      );
+    } finally {
+      setGeneratingTitle(false);
     }
   };
   
@@ -310,6 +442,261 @@ function App() {
       // Atualizar a mensagem final com o conteúdo editado
       setFinalMessage(messagePreviewRef.current.innerText);
     }
+  };
+  
+  // NOVO: Processar links em lote
+  const processBatchLinks = async () => {
+    if (!batchLinks.trim()) {
+      setError('Insira pelo menos um link para processamento em lote');
+      return;
+    }
+    
+    // Extrair links do texto (um por linha)
+    const links = batchLinks.split('\n').filter(link => link.trim());
+    
+    if (links.length === 0) {
+      setError('Nenhum link válido encontrado');
+      return;
+    }
+    
+    setBatchProcessing(true);
+    setBatchResults([]);
+    setBatchProgress(0);
+    setError('');
+    
+    // Processar cada link sequencialmente
+    const results = [];
+    for (let i = 0; i < links.length; i++) {
+      const link = links[i].trim();
+      if (!link) continue;
+      
+      try {
+        const response = await axios.post(`${API_BASE_URL}/api/scrape`, { url: link });
+        
+        if (response.data) {
+          // Gerar mensagem para este produto
+          const productMessage = await generateMessageForProduct(response.data, link);
+          
+          results.push({
+            url: link,
+            success: true,
+            data: response.data,
+            message: productMessage
+          });
+        }
+      } catch (error) {
+        console.error('Erro ao processar link em lote:', error);
+        results.push({
+          url: link,
+          success: false,
+          error: error.response?.data?.error || 'Falha ao extrair dados'
+        });
+      }
+      
+      // Atualizar progresso
+      setBatchProgress(Math.floor(((i + 1) / links.length) * 100));
+    }
+    
+    setBatchResults(results);
+    setBatchProcessing(false);
+  };
+  
+  // NOVO: Gerar mensagem para um produto (sem alterar estado)
+  const generateMessageForProduct = async (productData, url) => {
+    if (!productData) return '';
+    
+    // Criar formatador para usar nas mensagens em lote
+    const formatPrice = (price) => {
+      if (!price) return '';
+      let cleanPrice = String(price).replace(/[^\d,\.]/g, '');
+      
+      if (cleanPrice.includes(',')) {
+        return cleanPrice.split(',')[0];
+      }
+      
+      if (cleanPrice.includes('.')) {
+        return cleanPrice.split('.')[0];
+      }
+      
+      return cleanPrice;
+    };
+    
+    // Determinar tipo de loja para este produto
+    let productStoreType = storeType;
+    
+    if (!productStoreType) {
+      const isAmazon = url.includes('amazon.com') || url.includes('amazon.com.br');
+      const isMercadoLivre = url.includes('mercadolivre') || url.includes('mercadolibre');
+      const isShopee = url.includes('shopee.com.br');
+      
+      if (isAmazon) {
+        productStoreType = 'amazon';
+      } else if (isMercadoLivre) {
+        productStoreType = 'loja_oficial';
+      } else if (isShopee) {
+        productStoreType = 'loja_validada';
+      } else {
+        productStoreType = 'loja_validada';
+      }
+    }
+    
+    // Gerar texto de tipo de loja
+    const getStoreTypeText = (storeType, productData) => {
+      if (!productData) return '';
+      
+      const isNike = productData.platform === 'nike' || (productData.vendor && productData.vendor.toLowerCase().includes('nike'));
+      const isCentauro = productData.platform === 'centauro' || (productData.vendor && productData.vendor.toLowerCase().includes('centauro'));
+      const isNetshoes = productData.platform === 'netshoes' || (productData.vendor && productData.vendor.toLowerCase().includes('netshoes'));
+      const isShopee = productData.platform === 'shopee' || (productData.vendor && productData.vendor.toLowerCase().includes('shopee'));
+      
+      if (storeType === 'amazon') {
+        return 'Vendido e entregue pela Amazon';
+      }
+      
+      if (storeType === 'loja_oficial') {
+        if (isNike) {
+          return 'Loja oficial Nike no Mercado Livre';
+        }
+        if (isCentauro) {
+          return 'Loja oficial Centauro no Mercado Livre';
+        }
+        if (isNetshoes) {
+          return 'Loja oficial Netshoes no Mercado Livre';
+        }
+        if (isShopee) {
+          return 'Loja oficial na Shopee';
+        }
+        
+        if (productData.vendor && productData.vendor !== 'Mercado Livre') {
+          // Limpar nome do vendedor
+          const cleanName = productData.vendor
+            .replace(/^Vendido\s+por/i, '')
+            .replace(/^Loja\s+oficial\s+/i, '')
+            .replace(/^Loja\s+/i, '')
+            .replace(/^oficial\s*/i, '')
+            .replace(/\s*oficial$/i, '')
+            .replace(/\s*oficial\s*/i, ' ')
+            .trim();
+          
+          return `Loja oficial ${cleanName} no Mercado Livre`;
+        }
+        
+        return 'Loja oficial no Mercado Livre';
+      }
+      
+      if (storeType === 'loja_validada') {
+        if (isShopee) {
+          return 'Loja validada na Shopee';
+        }
+        return 'Loja validada no Mercado Livre';
+      }
+      
+      if (storeType === 'catalogo') {
+        if (vendorName && vendorName.trim() !== '') {
+          return `⚠️ No anúncio, localize o campo 'Outras opções de compra' e selecione o vendedor '${vendorName}' (loja oficial)`;
+        } else {
+          return `⚠️ No anúncio, localize o campo 'Outras opções de compra' e selecione o vendedor 'Informe o nome do vendedor' (loja oficial)`;
+        }
+      }
+      
+      return '';
+    };
+    
+    // Verificar se é Amazon
+    const isAmazon = productStoreType === 'amazon' || 
+                    (productData.vendor === 'Amazon') ||
+                    (productData.platform && 
+                     productData.platform.toLowerCase().includes('amazon'));
+    
+    // Preços formatados
+    const rawCurrentPrice = productData.currentPrice;
+    const rawOriginalPrice = productData.originalPrice;
+    const processedCurrentPrice = productData.displayPrice || formatPrice(rawCurrentPrice);
+    const processedOriginalPrice = productData.displayOriginalPrice || formatPrice(rawOriginalPrice);
+    
+    // Mensagem de loja
+    const storeTypeText = getStoreTypeText(productStoreType, productData);
+    
+    // Verificar se há desconto real
+    const hasRealDiscount = (originalPrice, currentPrice) => {
+      if (!originalPrice || !currentPrice) return false;
+      
+      const originalValue = parseFloat(String(originalPrice).replace(/\./g, '').replace(',', '.'));
+      const currentValue = parseFloat(String(currentPrice).replace(/\./g, '').replace(',', '.'));
+      
+      return !isNaN(originalValue) && !isNaN(currentValue) && 
+             originalValue > currentValue && 
+             (originalValue - currentValue) / originalValue > 0.05;
+    };
+    
+    // Aplicar descontos se definidos
+    let finalPrice = processedCurrentPrice;
+    
+    // Gerar mensagem de preço
+    let priceText = '';
+    
+    // Para Amazon, mostrar apenas o preço atual
+    if (isAmazon) {
+      priceText = `✅  Por *R$ ${finalPrice}*`;
+    } else {
+      // Para outras lojas
+      if (processedOriginalPrice && hasRealDiscount(rawOriginalPrice, finalPrice)) {
+        priceText = `✅  ~De R$ ${processedOriginalPrice}~ por *R$ ${finalPrice}*`;
+      } else {
+        priceText = `✅  Por *R$ ${finalPrice}*`;
+      }
+    }
+    
+    // Montar mensagem completa
+    let message = `➡️ *${productData.name}*`;
+    
+    if (storeTypeText) {
+      message += `\n_${storeTypeText}_`;
+    }
+    
+    message += `\n\n${priceText}`;
+    
+    // Adicionar cupom se fornecido
+    if (couponCode) {
+      message += `\n🎟️ Use o cupom: *${couponCode}*`;
+    }
+    
+    // Adicionar link do produto
+    message += `\n🛒 ${productData.productUrl || url}`;
+    
+    message += `\n\n☑️ Link do grupo: https://linktr.ee/techdealsbr`;
+    
+    return message;
+  };
+  
+  // NOVO: Copiar todas as mensagens em lote
+  const copyAllBatchMessages = () => {
+    if (batchResults.length === 0) {
+      setError('Não há mensagens em lote para copiar');
+      return;
+    }
+    
+    const allMessages = batchResults
+      .filter(result => result.success)
+      .map(result => result.message)
+      .join('\n\n---\n\n');
+    
+    if (!allMessages) {
+      setError('Nenhuma mensagem válida para copiar');
+      return;
+    }
+    
+    navigator.clipboard.writeText(allMessages)
+      .then(() => {
+        setCopySuccess(true);
+        setTimeout(() => {
+          setCopySuccess(false);
+        }, 3000);
+      })
+      .catch((err) => {
+        console.error('Erro ao copiar: ', err);
+        setError('Falha ao copiar para a área de transferência');
+      });
   };
   
   // Função para renderizar um campo de texto com botão de limpar e datalist
@@ -344,7 +731,7 @@ function App() {
     );
   };
   
- // Compartilhar mensagem e imagem no WhatsApp usando Web Share API
+// Compartilhar mensagem e imagem no WhatsApp usando Web Share API
 const shareWhatsApp = async () => {
   if (!finalMessage) {
     setError('Nenhuma mensagem para compartilhar.');
@@ -465,7 +852,7 @@ const shareWhatsApp = async () => {
     <div className="container">
       <header className="app-header">
         <h1 className="app-title">GeraPromo</h1>
-        <span className="app-version">Versão 2.5</span>
+        <span className="app-version">Versão 2.7</span>
       </header>
       
       <div className="main-card" ref={mainCardRef}>
@@ -567,80 +954,80 @@ const shareWhatsApp = async () => {
           </div>
         )}
         
-{/* Seção de Tipo de Loja */}
-<div className="section-header" onClick={() => toggleSection('store')}>
-  <div className="section-title">
-    <i className="fas fa-store"></i>
-    Tipo de Loja
-  </div>
-  <div className="chevron-container" onClick={(e) => toggleSection('store', e)}>
-    <i className={`fas fa-chevron-down chevron-icon ${storeSectionOpen ? 'open' : ''}`}></i>
-  </div>
-</div>
+        {/* Seção de Tipo de Loja */}
+        <div className="section-header" onClick={() => toggleSection('store')}>
+          <div className="section-title">
+            <i className="fas fa-store"></i>
+            Tipo de Loja
+          </div>
+          <div className="chevron-container" onClick={(e) => toggleSection('store', e)}>
+            <i className={`fas fa-chevron-down chevron-icon ${storeSectionOpen ? 'open' : ''}`}></i>
+          </div>
+        </div>
 
-{storeSectionOpen && (
-  <div className="section-content">
-    <div className="store-type-group">
-      <button 
-        type="button"
-        className={`store-type-btn ${storeType === 'amazon' ? 'active' : ''}`}
-        onClick={() => {
-          setStoreType('amazon');
-          console.log("Botão Amazon clicado, storeType =", 'amazon');
-        }}
-      >
-        <i className="fab fa-amazon"></i> Amazon
-      </button>
-      <button 
-        type="button"
-        className={`store-type-btn ${storeType === 'loja_oficial' ? 'active' : ''}`}
-        onClick={() => {
-          setStoreType('loja_oficial');
-          console.log("Botão Loja Oficial clicado, storeType =", 'loja_oficial');
-        }}
-      >
-        <i className="fas fa-check-circle"></i> Loja Oficial
-      </button>
-      <button 
-        type="button"
-        className={`store-type-btn ${storeType === 'catalogo' ? 'active' : ''}`}
-        onClick={() => {
-          setStoreType('catalogo');
-          console.log("Botão Catálogo clicado, storeType =", 'catalogo');
-        }}
-      >
-        <i className="fas fa-list"></i> Catálogo
-      </button>
-      <button 
-        type="button"
-        className={`store-type-btn ${storeType === 'loja_validada' ? 'active' : ''}`}
-        onClick={() => {
-          setStoreType('loja_validada');
-          console.log("Botão Loja validada clicado, storeType =", 'loja_validada');
-        }}
-      >
-        <i className="fas fa-shield-alt"></i> Loja validada
-      </button>
-      <button 
-        type="button"
-        className={`store-type-btn ${storeType === '' ? 'active' : ''}`}
-        onClick={() => {
-          setStoreType('');
-          console.log("Botão Nenhum clicado, storeType =", '');
-        }}
-      >
-        <i className="fas fa-times"></i> Nenhum
-      </button>
-    </div>
-    
-    {storeType === 'catalogo' && (
-      <div className="form-group" style={{ marginTop: '10px' }}>
-        <label className="form-label">Nome do Vendedor:</label>
-        {renderInputWithClear(vendorName, setVendorName, "Insira o nome do vendedor")}
-      </div>
-    )}
-  </div>
-)}
+        {storeSectionOpen && (
+          <div className="section-content">
+            <div className="store-type-group">
+              <button 
+                type="button"
+                className={`store-type-btn ${storeType === 'amazon' ? 'active' : ''}`}
+                onClick={() => {
+                  setStoreType('amazon');
+                  console.log("Botão Amazon clicado, storeType =", 'amazon');
+                }}
+              >
+                <i className="fab fa-amazon"></i> Amazon
+              </button>
+              <button 
+                type="button"
+                className={`store-type-btn ${storeType === 'loja_oficial' ? 'active' : ''}`}
+                onClick={() => {
+                  setStoreType('loja_oficial');
+                  console.log("Botão Loja Oficial clicado, storeType =", 'loja_oficial');
+                }}
+              >
+                <i className="fas fa-check-circle"></i> Loja Oficial
+              </button>
+              <button 
+                type="button"
+                className={`store-type-btn ${storeType === 'catalogo' ? 'active' : ''}`}
+                onClick={() => {
+                  setStoreType('catalogo');
+                  console.log("Botão Catálogo clicado, storeType =", 'catalogo');
+                }}
+              >
+                <i className="fas fa-list"></i> Catálogo
+              </button>
+              <button 
+                type="button"
+                className={`store-type-btn ${storeType === 'loja_validada' ? 'active' : ''}`}
+                onClick={() => {
+                  setStoreType('loja_validada');
+                  console.log("Botão Loja validada clicado, storeType =", 'loja_validada');
+                }}
+              >
+                <i className="fas fa-shield-alt"></i> Loja validada
+              </button>
+              <button 
+                type="button"
+                className={`store-type-btn ${storeType === '' ? 'active' : ''}`}
+                onClick={() => {
+                  setStoreType('');
+                  console.log("Botão Nenhum clicado, storeType =", '');
+                }}
+              >
+                <i className="fas fa-times"></i> Nenhum
+              </button>
+            </div>
+            
+            {storeType === 'catalogo' && (
+              <div className="form-group" style={{ marginTop: '10px' }}>
+                <label className="form-label">Nome do Vendedor:</label>
+                {renderInputWithClear(vendorName, setVendorName, "Insira o nome do vendedor")}
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Nova Seção: Imagem Personalizada */}
         <div className="section-header" onClick={() => toggleSection('image')}>
@@ -697,6 +1084,215 @@ const shareWhatsApp = async () => {
             </div>
           </div>
         )}
+        
+        {/* Nova Seção: Criar Título Divertido */}
+        <div className="section-header" onClick={() => toggleSection('aiImage')}>
+          <div className="section-title">
+            <i className="fas fa-robot"></i>
+            Criar Título Com IA
+            <span className="optional-tag">Novo</span>
+          </div>
+          <div className="chevron-container" onClick={(e) => toggleSection('aiImage', e)}>
+            <i className={`fas fa-chevron-down chevron-icon ${aiImageSectionOpen ? 'open' : ''}`}></i>
+          </div>
+        </div>
+        
+        {aiImageSectionOpen && (
+          <div className="section-content">
+            <div className="form-group">
+              <label className="form-label">Prompt para o Título (Opcional)</label>
+              <textarea 
+                className="form-input"
+                style={{ minHeight: '60px' }}
+                value={titlePrompt}
+                onChange={(e) => setTitlePrompt(e.target.value)}
+                placeholder="Ex: Gere um título divertido e criativo"
+                disabled={generatingTitle}
+              />
+            </div>
+            
+            <button 
+              className="btn"
+              style={{ 
+                width: '100%',
+                backgroundColor: 'var(--accent-color)',
+                position: 'relative'
+              }}
+              onClick={handleGenerateTitle}
+              disabled={generatingTitle || !productData}
+            >
+              {generatingTitle ? (
+                <>
+                  <div className="loading"></div>
+                  Gerando título...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-lightbulb"></i>
+                  Gerar Título
+                </>
+              )}
+            </button>
+            
+            {generatedTitle && (
+              <div style={{ 
+                marginTop: '15px', 
+                padding: '10px', 
+                backgroundColor: 'rgba(34, 197, 94, 0.1)', 
+                borderRadius: 'var(--border-radius)',
+                border: '1px solid var(--accent-color)'
+              }}>
+                <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>Título gerado:</p>
+                <p style={{ 
+                  fontFamily: 'monospace', 
+                  fontStyle: 'italic',  // Alterado de 'bold' para 'italic'
+                  fontSize: '1.1rem',
+                  backgroundColor: 'rgba(0,0,0,0.05)',
+                  padding: '8px',
+                  borderRadius: '4px'
+                }}>{generatedTitle}</p>
+              </div>
+            )}
+            
+            <div className="web-share-info" style={{ marginTop: '15px' }}>
+              <p className="web-share-info-text">
+                <i className="fas fa-lightbulb"></i> Dica: O título será adicionado automaticamente à sua mensagem. Você também pode editar a mensagem manualmente se preferir.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* NOVA SEÇÃO: Processamento em Lote */}
+        <div className="section-header" onClick={() => toggleSection('batch')}>
+          <div className="section-title">
+            <i className="fas fa-tasks"></i>
+            Gerar Mensagens em Lote
+            <span className="optional-tag">Novo</span>
+          </div>
+          <div className="chevron-container" onClick={(e) => toggleSection('batch', e)}>
+            <i className={`fas fa-chevron-down chevron-icon ${batchSectionOpen ? 'open' : ''}`}></i>
+          </div>
+        </div>
+        
+        {batchSectionOpen && (
+          <div className="section-content">
+            <div className="form-group">
+              <label className="form-label">Links para Processamento</label>
+              <p className="form-description">
+                Cole vários links para processar de uma vez (um por linha).
+              </p>
+              
+              <textarea 
+                className="form-input" 
+                style={{ minHeight: "120px" }}
+                value={batchLinks}
+                onChange={(e) => setBatchLinks(e.target.value)}
+                placeholder="Cole um Link por linha&#10;Exemplo:&#10;https://amzn.to/3Zjf9kk&#10;https://mercadolivre.com/sec/2x3yNSP"
+                disabled={batchProcessing}
+              />
+              
+              <button 
+                className="btn"
+                style={{ marginTop: "10px", width: "100%" }}
+                onClick={processBatchLinks}
+                disabled={batchProcessing}
+              >
+                {batchProcessing ? (
+                  <>
+                    <div className="loading"></div>
+                    Processando... {batchProgress}%
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-play"></i> Processar Links em Lote
+                  </>
+                )}
+              </button>
+              
+              {batchResults.length > 0 && (
+                <div className="batch-results" style={{ marginTop: "20px" }}>
+                  <div className="batch-results-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <h3 style={{ margin: 0 }}>Resultados ({batchResults.filter(r => r.success).length}/{batchResults.length})</h3>
+                    <button 
+                      className="btn-sm" 
+                      onClick={copyAllBatchMessages}
+                      disabled={batchResults.filter(r => r.success).length === 0}
+                    >
+                      <i className="fas fa-copy"></i> Copiar Todas
+                    </button>
+                  </div>
+                  
+                  <div className="batch-results-list" style={{ 
+                    maxHeight: "300px", 
+                    overflowY: "auto", 
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "var(--border-radius)",
+                    backgroundColor: "var(--input-bg)"
+                  }}>
+                    {batchResults.map((result, index) => (
+                      <div 
+                        key={index} 
+                        className="batch-result-item" 
+                        style={{ 
+                          padding: "10px", 
+                          borderBottom: index < batchResults.length - 1 ? "1px solid var(--border-color)" : "none",
+                          backgroundColor: result.success ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
+                          <div style={{ fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>
+                            {result.url}
+                          </div>
+                          <div>
+                            {result.success ? (
+                              <span style={{ color: "var(--success-color)" }}>
+                                <i className="fas fa-check-circle"></i> Sucesso
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--error-color)" }}>
+                                <i className="fas fa-exclamation-circle"></i> Falha
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {result.success ? (
+                          <>
+                            <div style={{ fontSize: "0.9rem", marginBottom: "5px" }}>
+                              {result.data.name}
+                            </div>
+                            <div style={{ display: "flex", gap: "5px" }}>
+                              <button 
+                                className="btn-sm"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(result.message);
+                                }}
+                              >
+                                <i className="fas fa-copy"></i> Copiar
+                              </button>
+                              <button 
+                                className="btn-sm"
+                                onClick={() => {
+                                  handleProductDataReceived(result.data, result.url);
+                                }}
+                              >
+                                <i className="fas fa-edit"></i> Editar
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ color: "var(--error-color)", fontSize: "0.9rem" }}>
+                            {result.error}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Botão Extrair Dados - Com destaque especial para garantir visibilidade */}
         <div style={{ 
@@ -745,7 +1341,7 @@ const shareWhatsApp = async () => {
         
         {loading ? (
           <div className="section-content" style={{ textAlign: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', alignItems: 'center', padding: '20px' }}>
               <div className="loading"></div>
               <span>Carregando informações do produto...</span>
             </div>
