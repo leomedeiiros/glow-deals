@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3001;
 
 // Configuração do CORS para permitir requisições do Vercel e localhost
 app.use(cors({
-  origin: ['https://med-techdeals.vercel.app', 'http://localhost:3000'],
+  origin: ['https:///guerra-dealsfit.vercel.app', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));

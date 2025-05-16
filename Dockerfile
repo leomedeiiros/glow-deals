@@ -62,4 +62,4 @@ ENV PORT=10000
 EXPOSE 10000
 
 # Inicia o backend (Express serve também o frontend)
-CMD ["node", "backend/src/app.js"]
+CMD ["node", "backend/src/app.js"
