@@ -1,6 +1,9 @@
 // backend/src/services/amazonScraper.js
 const puppeteer = require('puppeteer');
 
+// Função auxiliar para aguardar
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 exports.scrapeProductData = async (url) => {
   const browser = await puppeteer.launch({
     headless: 'new',
@@ -18,52 +21,79 @@ exports.scrapeProductData = async (url) => {
     const page = await browser.newPage();
     
     // Definir user agent para evitar bloqueios
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    // Configurar viewport
+    await page.setViewport({ width: 1366, height: 768 });
     
-    // Extrair dados do produto
+    console.log(`Navegando para URL da Amazon: ${url}`);
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: 90000 });
+    
+    // Aguardar carregamento adicional
+    await wait(3000);
+    
+    // Rolar a página para garantir carregamento
+    await page.evaluate(() => {
+      window.scrollTo(0, 500);
+    });
+    
+    await wait(2000);
+    
+    // Extrair dados do produto com melhor detecção
     const productData = await page.evaluate(() => {
-      // Função para limpar preço
-      const cleanPrice = (price) => {
-        if (!price) return '';
-        // Remove "R$" e espaços, mantém apenas números, vírgulas e pontos
-        return price.replace(/R\$\s*/g, '').replace(/[^\d,\.]/g, '').trim();
+      console.log('Iniciando extração de dados na página da Amazon...');
+      
+      // Função para limpar e formatar preço
+      const cleanAndFormatPrice = (priceText) => {
+        if (!priceText) return '';
+        console.log(`Limpando preço: "${priceText}"`);
+        
+        // Remove "R$", espaços extras e caracteres especiais, mantém números, vírgulas e pontos
+        let cleaned = priceText.replace(/R\$\s*/g, '').replace(/[^\d,\.]/g, '').trim();
+        
+        // Se tem vírgula (formato brasileiro 37,97), pegar só a parte inteira
+        if (cleaned.includes(',')) {
+          const parts = cleaned.split(',');
+          cleaned = parts[0];
+        }
+        
+        // Se tem ponto (formato americano ou separador de milhares), tratar adequadamente
+        if (cleaned.includes('.')) {
+          // Se tem apenas um ponto e dois dígitos depois, é decimal (ex: 37.97)
+          if (cleaned.match(/^\d+\.\d{2}$/)) {
+            cleaned = cleaned.split('.')[0];
+          }
+          // Se tem múltiplos pontos ou formato de milhares (1.234.567), remover pontos
+          else if (cleaned.match(/\d{1,3}(\.\d{3})+/)) {
+            cleaned = cleaned.replace(/\./g, '');
+          }
+        }
+        
+        console.log(`Preço limpo: "${cleaned}"`);
+        return cleaned;
       };
       
-      // Função para formatar preço (remover centavos)
-      const formatPrice = (price) => {
-        if (!price) return '';
-        let cleanedPrice = cleanPrice(price);
-        
-        // Se tem vírgula (formato brasileiro), pegar só a parte antes da vírgula
-        if (cleanedPrice.includes(',')) {
-          return cleanedPrice.split(',')[0];
-        }
-        
-        // Se tem ponto (formato americano), pegar só a parte antes do ponto
-        if (cleanedPrice.includes('.')) {
-          return cleanedPrice.split('.')[0];
-        }
-        
-        return cleanedPrice;
+      // Função para validar se um preço faz sentido
+      const isValidPrice = (price) => {
+        if (!price) return false;
+        const numPrice = parseInt(price);
+        return !isNaN(numPrice) && numPrice > 0 && numPrice < 100000; // Entre R$ 1 e R$ 100.000
       };
       
       // Nome do produto
       const productTitle = document.querySelector('#productTitle')?.textContent.trim();
+      console.log(`Título encontrado: "${productTitle}"`);
       
-      // Preço atual - múltiplos seletores para maior compatibilidade
-      let currentPrice = '';
-      
+      // Lista de seletores para preço atual (do mais específico ao mais genérico)
       const currentPriceSelectors = [
-        // Novos seletores mais específicos
-        'span.reinventPricePriceToPayMargin:nth-child(2) > span:nth-child(2)',
-        '.a-price.a-text-price.a-size-medium.apexPriceToPay .a-offscreen',
+        // Seletores específicos para o novo layout
+        'span.reinventPricePriceToPayMargin span.a-price-whole',
+        'span.reinventPricePriceToPayMargin .a-offscreen',
         '.a-price.priceToPay .a-offscreen',
+        '.a-price.a-text-price.a-size-medium.apexPriceToPay .a-offscreen',
         
         // Seletores tradicionais
         '.a-price .a-offscreen',
-        '.priceToPay .a-offscreen',
         '#priceblock_ourprice',
         '#priceblock_dealprice',
         
@@ -71,97 +101,149 @@ exports.scrapeProductData = async (url) => {
         'span.a-price-whole',
         '.a-price-whole',
         '.a-size-medium.a-color-price.priceBlockBuyingPriceString',
-        'span[data-a-size="xl"] .a-offscreen',
-        'span[data-a-size="large"] .a-offscreen',
         
-        // Seletores mais genéricos (backup)
-        '[class*="price"] .a-offscreen',
-        '[class*="Price"] .a-offscreen'
+        // Seletores por atributos de dados
+        '[data-a-size="xl"] .a-offscreen',
+        '[data-a-size="large"] .a-offscreen',
+        
+        // Seletores genéricos
+        '[class*="price"] .a-offscreen:first-child',
+        'span[class*="price-"] .a-offscreen'
       ];
       
+      let currentPrice = '';
+      let foundPrices = [];
+      
+      // Testar todos os seletores e coletar os preços encontrados
       for (const selector of currentPriceSelectors) {
-        const element = document.querySelector(selector);
-        if (element && element.textContent) {
-          const priceText = element.textContent.trim();
-          if (priceText.includes('R$') || /\d+[,\.]\d+/.test(priceText)) {
-            currentPrice = formatPrice(priceText);
-            console.log(`Preço encontrado com seletor ${selector}: ${priceText} -> ${currentPrice}`);
-            break;
+        try {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            if (element && element.textContent) {
+              const priceText = element.textContent.trim();
+              const cleanedPrice = cleanAndFormatPrice(priceText);
+              
+              if (isValidPrice(cleanedPrice)) {
+                foundPrices.push({
+                  selector: selector,
+                  originalText: priceText,
+                  cleanedPrice: cleanedPrice,
+                  value: parseInt(cleanedPrice)
+                });
+                console.log(`Preço encontrado com ${selector}: "${priceText}" -> "${cleanedPrice}"`);
+              }
+            }
           }
+        } catch (e) {
+          console.log(`Erro com seletor ${selector}:`, e);
         }
       }
       
-      // Se ainda não encontrou, tentar buscar no HTML por padrões de preço
+      // Se encontrou preços, escolher o mais provável (geralmente o maior entre os válidos)
+      if (foundPrices.length > 0) {
+        // Ordenar por valor (maior primeiro) e pegar o primeiro que faça sentido
+        foundPrices.sort((a, b) => b.value - a.value);
+        currentPrice = foundPrices[0].cleanedPrice;
+        console.log(`Preço escolhido: ${currentPrice} de ${foundPrices.length} opções`);
+        console.log('Todos os preços encontrados:', foundPrices);
+      }
+      
+      // Se ainda não encontrou, fazer busca manual no texto da página
       if (!currentPrice) {
-        const allText = document.body.innerText;
-        const priceMatches = allText.match(/R\$\s*(\d+[,\.]\d+)/g);
+        console.log('Fazendo busca manual por preços na página...');
+        const pageText = document.body.innerText;
+        const priceMatches = pageText.match(/R\$\s*(\d{1,3}(?:[,\.]\d{3})*(?:[,\.]\d{2})?)/g);
+        
         if (priceMatches && priceMatches.length > 0) {
-          // Pegar o primeiro preço encontrado que pareça ser o principal
+          console.log('Preços encontrados no texto:', priceMatches);
+          
+          const validPrices = [];
           for (const match of priceMatches) {
-            const price = formatPrice(match);
-            if (price && parseInt(price) > 0) {
-              currentPrice = price;
-              console.log(`Preço extraído do texto: ${match} -> ${currentPrice}`);
-              break;
+            const cleaned = cleanAndFormatPrice(match);
+            if (isValidPrice(cleaned)) {
+              validPrices.push({
+                original: match,
+                cleaned: cleaned,
+                value: parseInt(cleaned)
+              });
+            }
+          }
+          
+          if (validPrices.length > 0) {
+            // Filtrar preços que fazem sentido para o produto (entre R$ 10 e R$ 500 para suplementos)
+            const sensiblePrices = validPrices.filter(p => p.value >= 10 && p.value <= 500);
+            
+            if (sensiblePrices.length > 0) {
+              // Pegar o preço mais comum ou o primeiro válido
+              sensiblePrices.sort((a, b) => b.value - a.value);
+              currentPrice = sensiblePrices[0].cleaned;
+              console.log(`Preço extraído do texto: ${currentPrice}`);
             }
           }
         }
       }
       
-      // Preço original (riscado) - múltiplos seletores
+      // Preço original (riscado) - seletores específicos
       let originalPrice = '';
-      
       const originalPriceSelectors = [
-        // Seletores para preço riscado/original
         '.a-text-price .a-offscreen',
-        '.a-price.a-text-price span.a-offscreen',
         '.a-price.a-text-price .a-offscreen',
         'span.a-price.a-text-price .a-offscreen',
-        
-        // Seletores alternativos
         '.a-text-strike .a-offscreen',
         'span[data-a-strike="true"] .a-offscreen',
-        '.a-price-was .a-offscreen',
-        '.a-size-small.a-color-secondary .a-offscreen',
-        
-        // Backup genérico
-        '[class*="was"] .a-offscreen',
-        '[class*="strike"] .a-offscreen'
+        '.a-price-was .a-offscreen'
       ];
       
       for (const selector of originalPriceSelectors) {
-        const element = document.querySelector(selector);
-        if (element && element.textContent) {
-          const priceText = element.textContent.trim();
-          if (priceText.includes('R$') || /\d+[,\.]\d+/.test(priceText)) {
-            originalPrice = formatPrice(priceText);
-            console.log(`Preço original encontrado com seletor ${selector}: ${priceText} -> ${originalPrice}`);
-            break;
+        try {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            const priceText = element.textContent.trim();
+            const cleanedPrice = cleanAndFormatPrice(priceText);
+            
+            if (isValidPrice(cleanedPrice) && cleanedPrice !== currentPrice) {
+              originalPrice = cleanedPrice;
+              console.log(`Preço original encontrado: ${originalPrice}`);
+              break;
+            }
           }
+        } catch (e) {
+          console.log(`Erro com seletor original ${selector}:`, e);
         }
       }
       
-      // Se encontrou o mesmo preço para ambos, limpar o original
-      if (originalPrice && currentPrice && originalPrice === currentPrice) {
-        originalPrice = '';
+      // Imagem do produto
+      const imageSelectors = [
+        '#landingImage',
+        '#imgBlkFront', 
+        '#main-image',
+        'img[data-a-image-name="landingImage"]',
+        '.a-dynamic-image',
+        'img[data-old-hires]'
+      ];
+      
+      let productImage = '';
+      for (const selector of imageSelectors) {
+        const element = document.querySelector(selector);
+        if (element && element.src) {
+          productImage = element.src;
+          break;
+        }
       }
       
-      // Imagem do produto
-      const productImage = document.querySelector('#landingImage')?.src || 
-                          document.querySelector('#imgBlkFront')?.src ||
-                          document.querySelector('#main-image')?.src ||
-                          document.querySelector('img[data-a-image-name="landingImage"]')?.src;
-      
-      return {
+      const result = {
         name: productTitle || 'Nome do produto não encontrado',
         currentPrice: currentPrice || 'Preço não disponível',
         originalPrice: originalPrice || null,
         imageUrl: productImage || '',
         vendor: 'Amazon'
       };
+      
+      console.log('Resultado final da extração:', result);
+      return result;
     });
     
-    // Log para debug
+    // Log detalhado para debug
     console.log('Dados extraídos da Amazon:', JSON.stringify(productData, null, 2));
     
     // Adicionar URL do produto
