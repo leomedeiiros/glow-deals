@@ -135,33 +135,42 @@ const MessagePreview = ({
            (originalValue - currentValue) / originalValue > 0.05;
   };
   
-  // Função fixa para sempre retornar o mesmo valor para cada tipo de loja
+  // CORREÇÃO: Função fixa para sempre retornar o mesmo valor para cada tipo de loja
   const getStoreTypeText = () => {
     // Se não tiver dados do produto, retornar vazio
     if (!productData) return '';
     
-    // Determinar se é um produto de loja específica
-    const isNike = productData.platform === 'nike' || (productData.vendor && productData.vendor.toLowerCase().includes('nike'));
-    const isCentauro = productData.platform === 'centauro' || (productData.vendor && productData.vendor.toLowerCase().includes('centauro'));
-    const isNetshoes = productData.platform === 'netshoes' || (productData.vendor && productData.vendor.toLowerCase().includes('netshoes'));
-    const isShopee = productData.platform === 'shopee' || (productData.vendor && productData.vendor.toLowerCase().includes('shopee'));
+    // NOVA LÓGICA: Detectar se vem dos sites originais (Nike, Centauro, Netshoes)
+    const isFromOriginalNike = productData.platform === 'nike' || 
+                              (productData.vendor && productData.vendor.toLowerCase().includes('nike'));
+    const isFromOriginalCentauro = productData.platform === 'centauro' || 
+                                  (productData.vendor && productData.vendor.toLowerCase().includes('centauro'));
+    const isFromOriginalNetshoes = productData.platform === 'netshoes' || 
+                                  (productData.vendor && productData.vendor.toLowerCase().includes('netshoes'));
+    const isFromOriginalShopee = productData.platform === 'shopee' || 
+                                (productData.vendor && productData.vendor.toLowerCase().includes('shopee'));
     
-    // Valores fixos para cada tipo de loja
+    // PRIORIDADE: Se vem dos sites originais, usar "Site oficial"
+    if (isFromOriginalNike) {
+      return 'Site oficial Nike';
+    }
+    
+    if (isFromOriginalCentauro) {
+      return 'Site oficial Centauro';
+    }
+    
+    if (isFromOriginalNetshoes) {
+      return 'Site oficial Netshoes';
+    }
+    
+    // Valores fixos para outros tipos de loja (comportamento original mantido)
     if (storeType === 'amazon') {
       return 'Vendido e entregue pela Amazon';
     }
     
     if (storeType === 'loja_oficial') {
-      if (isNike) {
-        return 'Loja oficial Nike no Mercado Livre';
-      }
-      if (isCentauro) {
-        return 'Loja oficial Centauro no Mercado Livre';
-      }
-      if (isNetshoes) {
-        return 'Loja oficial Netshoes no Mercado Livre';
-      }
-      if (isShopee) {
+      // Para produtos que não vêm dos sites originais, usar a lógica antiga
+      if (isFromOriginalShopee) {
         return 'Loja oficial na Shopee';
       }
       
@@ -175,7 +184,7 @@ const MessagePreview = ({
     }
     
     if (storeType === 'loja_validada') {
-      if (isShopee) {
+      if (isFromOriginalShopee) {
         return 'Loja validada na Shopee';
       }
       return 'Loja validada no Mercado Livre';

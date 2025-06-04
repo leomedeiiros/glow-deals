@@ -167,7 +167,7 @@ exports.scrapeProductData = async (url) => {
   }
 };
 
-// Função melhorada para extrair dados da página
+// Função melhorada para extrair dados da página usando os seletores específicos
 async function extractProductData(page) {
   return await page.evaluate(() => {
     console.log('[CENTAURO-PAGE] 🔍 Extraindo dados...');
@@ -176,6 +176,19 @@ async function extractProductData(page) {
     let currentPrice = '';
     let originalPrice = '';
     let productImage = '';
+    
+    // Função para extrair preço com R$
+    const extractPriceWithRS = (text) => {
+      if (!text) return null;
+      const match = text.match(/R\$\s*(\d+[.,]\d+)/);
+      return match ? match[1].replace('.', ',') : null;
+    };
+    
+    // Função para limpar preço
+    const cleanPrice = (price) => {
+      if (!price) return '';
+      return price.replace(/[^\d,]/g, '').trim();
+    };
     
     // 1. Nome do produto - EXTRAIR DO TITLE DA PÁGINA
     if (document.title && !document.title.includes('Access Denied')) {
@@ -199,34 +212,70 @@ async function extractProductData(page) {
       }
     }
     
-    // 2. Preços - seletor específico e alternativas
-    const offerElement = document.querySelector('.Typographystyled__Offer-sc-bdxvrr-4');
-    if (offerElement) {
-      const offerText = offerElement.textContent.trim();
-      console.log('[CENTAURO-PAGE] Texto da oferta:', offerText);
+    // 2. CORREÇÃO: Usar os seletores específicos fornecidos
+    
+    // Seletor para preço original (antigo)
+    const originalPriceElement = document.querySelector('.Typographystyled__Offer-sc-bdxvrr-4');
+    if (originalPriceElement) {
+      const priceText = originalPriceElement.textContent.trim();
+      console.log('[CENTAURO-PAGE] ✅ Preço original encontrado com seletor específico:', priceText);
       
-      // Padrão De/Por
-      const deParaMatch = offerText.match(/De\s*R?\$?\s*(\d+[,.]\d+)\s*Por\s*R?\$?\s*(\d+[,.]\d+)/i);
-      if (deParaMatch) {
-        originalPrice = deParaMatch[1].replace('.', ',');
-        currentPrice = deParaMatch[2].replace('.', ',');
+      // Extrair preço usando regex "De R$ X"
+      const deMatch = priceText.match(/De\s*R\$\s*(\d+[.,]\d+)/i);
+      if (deMatch) {
+        originalPrice = deMatch[1].replace('.', ',');
+        console.log('[CENTAURO-PAGE] ✅ Preço original extraído:', originalPrice);
+      } else {
+        // Fallback: extrair qualquer preço encontrado
+        originalPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
       }
     }
     
-    // Busca geral por preços se não encontrou
-    if (!currentPrice) {
-      const priceRegex = /R\$\s*(\d+[,.]\d+)/g;
-      const matches = document.body.textContent.match(priceRegex);
-      if (matches && matches.length > 0) {
-        const prices = matches.map(m => m.match(/(\d+[,.]\d+)/)[1])
-          .map(p => ({ text: p.replace('.', ','), value: parseFloat(p.replace(',', '.')) }))
-          .filter(p => p.value >= 20 && p.value <= 800)
-          .sort((a, b) => a.value - b.value);
+    // Seletor para preço atual
+    const currentPriceElement = document.querySelector('p.Typographystyled__Subtitle-sc-bdxvrr-2');
+    if (currentPriceElement) {
+      const priceText = currentPriceElement.textContent.trim();
+      console.log('[CENTAURO-PAGE] ✅ Preço atual encontrado com seletor específico:', priceText);
+      currentPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
+    }
+    
+    // Log dos preços encontrados
+    console.log('[CENTAURO-PAGE] Preços extraídos - Original:', originalPrice, 'Atual:', currentPrice);
+    
+    // Se não encontrou com os seletores específicos, usar fallbacks
+    if (!currentPrice || !originalPrice) {
+      console.log('[CENTAURO-PAGE] Usando seletores fallback...');
+      
+      // Fallback usando o padrão "De X Por Y"
+      const offerElement = document.querySelector('.Typographystyled__Offer-sc-bdxvrr-4');
+      if (offerElement && !originalPrice && !currentPrice) {
+        const offerText = offerElement.textContent.trim();
+        console.log('[CENTAURO-PAGE] Texto da oferta completo:', offerText);
         
-        if (prices.length > 0) {
-          currentPrice = prices[0].text;
-          if (prices.length > 1) {
-            originalPrice = prices[prices.length - 1].text;
+        // Padrão De/Por
+        const deParaMatch = offerText.match(/De\s*R?\$?\s*(\d+[,.]\d+)\s*Por\s*R?\$?\s*(\d+[,.]\d+)/i);
+        if (deParaMatch) {
+          originalPrice = deParaMatch[1].replace('.', ',');
+          currentPrice = deParaMatch[2].replace('.', ',');
+          console.log('[CENTAURO-PAGE] ✅ Preços extraídos do padrão De/Por:', { originalPrice, currentPrice });
+        }
+      }
+      
+      // Busca geral por preços se não encontrou
+      if (!currentPrice) {
+        const priceRegex = /R\$\s*(\d+[,.]\d+)/g;
+        const matches = document.body.textContent.match(priceRegex);
+        if (matches && matches.length > 0) {
+          const prices = matches.map(m => m.match(/(\d+[,.]\d+)/)[1])
+            .map(p => ({ text: p.replace('.', ','), value: parseFloat(p.replace(',', '.')) }))
+            .filter(p => p.value >= 20 && p.value <= 800)
+            .sort((a, b) => a.value - b.value);
+          
+          if (prices.length > 0) {
+            currentPrice = prices[0].text;
+            if (prices.length > 1 && !originalPrice) {
+              originalPrice = prices[prices.length - 1].text;
+            }
           }
         }
       }
@@ -252,6 +301,20 @@ async function extractProductData(page) {
       } catch (e) {}
     }
     
+    // Verificar se o preço atual é menor que o original (como esperado)
+    if (originalPrice && currentPrice) {
+      const origValue = parseFloat(originalPrice.replace(',', '.'));
+      const currValue = parseFloat(currentPrice.replace(',', '.'));
+      
+      if (origValue <= currValue) {
+        // Se não for, pode ser um erro. Inverter apenas se a diferença for substancial (> 5%)
+        if (currValue > origValue * 1.05) {
+          console.log("[CENTAURO-PAGE] Invertendo preços porque original <= current");
+          [originalPrice, currentPrice] = [currentPrice, originalPrice];
+        }
+      }
+    }
+    
     const result = {
       name: productTitle || 'Produto não encontrado',
       currentPrice: currentPrice || 'Preço não disponível',
@@ -262,7 +325,7 @@ async function extractProductData(page) {
       realProductUrl: window.location.href
     };
     
-    console.log('[CENTAURO-PAGE] ✅ Resultado:', result);
+    console.log('[CENTAURO-PAGE] ✅ Resultado final:', result);
     return result;
   });
 }

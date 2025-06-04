@@ -107,7 +107,9 @@ exports.scrapeProduct = async (req, res) => {
       productData = await netshoesScraper.scrapeProductData(resolvedUrl);
     } else if (
       resolvedUrl.includes('nike.com.br') || 
-      resolvedUrl.includes('nike.com/br')
+      resolvedUrl.includes('nike.com/br') ||
+      resolvedUrl.includes('nike.com/tenis') ||
+      resolvedUrl.includes('nike.com') // CORREÇÃO: Incluir qualquer domínio Nike
     ) {
       console.log('Usando Nike Scraper');
       productData = await nikeScraper.scrapeProductData(resolvedUrl);

@@ -84,6 +84,61 @@ exports.resolveUrl = async (shortenedUrl) => {
     const resolvedUrl = page.url();
     console.log(`URL resolvida: ${resolvedUrl}`);
     
+    // CORREÇÃO: Para links da Nike, tentar forçar redirecionamento para .com.br
+    if (resolvedUrl.includes('nike.com') && !resolvedUrl.includes('nike.com.br')) {
+      console.log(`Detectado link Nike internacional, tentando versão brasileira...`);
+      
+      // Extrair o path do produto
+      const productMatch = resolvedUrl.match(/nike\.com(\/[^?]+)/);
+      if (productMatch && productMatch[1]) {
+        const productPath = productMatch[1];
+        
+        // Tentar construir URL brasileira
+        let brazilianUrl = `https://www.nike.com.br${productPath}`;
+        
+        // Se tem parâmetros na URL original, preservar alguns importantes
+        const urlParams = new URL(resolvedUrl);
+        if (urlParams.searchParams.get('cor')) {
+          brazilianUrl += `?cor=${urlParams.searchParams.get('cor')}`;
+        }
+        
+        console.log(`Tentando URL brasileira: ${brazilianUrl}`);
+        
+        // Verificar se a URL brasileira funciona
+        try {
+          const testPage = await browser.newPage();
+          await testPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36');
+          
+          const response = await testPage.goto(brazilianUrl, { 
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+          
+          if (response.status() === 200) {
+            const pageContent = await testPage.evaluate(() => {
+              return {
+                title: document.title,
+                hasError: document.body.textContent.includes('Page not found') || 
+                         document.body.textContent.includes('Error') ||
+                         document.title.includes('Page not found'),
+                bodyLength: document.body.innerHTML.length
+              };
+            });
+            
+            if (!pageContent.hasError && pageContent.bodyLength > 5000) {
+              console.log(`✅ URL brasileira válida encontrada: ${brazilianUrl}`);
+              await testPage.close();
+              return brazilianUrl;
+            }
+          }
+          
+          await testPage.close();
+        } catch (error) {
+          console.log(`❌ Erro ao testar URL brasileira: ${error.message}`);
+        }
+      }
+    }
+    
     // Para links da Amazon, manter o formato original
     if (resolvedUrl.includes('amazon.com') || resolvedUrl.includes('amazon.com.br')) {
       return resolvedUrl;
@@ -151,8 +206,8 @@ exports.resolveUrl = async (shortenedUrl) => {
       return resolvedUrl;
     }
     
-    // Para links da Nike
-    if (resolvedUrl.includes('nike.com.br') || resolvedUrl.includes('nike.com/br')) {
+    // Para links da Nike - sempre retornar o que foi resolvido
+    if (resolvedUrl.includes('nike.com.br') || resolvedUrl.includes('nike.com/br') || resolvedUrl.includes('nike.com')) {
       return resolvedUrl;
     }
     
