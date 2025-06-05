@@ -243,30 +243,49 @@ exports.scrapeProductData = async (url) => {
       let currentPrice = '';
       let originalPrice = '';
       
-      // Seletor para preço original (antigo/riscado)
-      const originalPriceElement = document.querySelector('div.price:nth-child(2) > div:nth-child(1) > div:nth-child(1) > span:nth-child(1)');
+      // Seletor para preço original (antigo) - NOVO SELETOR
+      const originalPriceElement = document.querySelector('.buybox__buy-content--info > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > span:nth-child(1)');
       if (originalPriceElement) {
         const priceText = originalPriceElement.textContent.trim();
-        console.log('[NETSHOES] Preço original encontrado com seletor específico:', priceText);
+        console.log('[NETSHOES] ✅ Preço original encontrado com seletor específico:', priceText);
         originalPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
       }
       
-      // Seletor para preço atual
-      const currentPriceElement = document.querySelector('div.price:nth-child(2) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > span:nth-child(1)');
+      // Seletor para preço atual - NOVO SELETOR
+      const currentPriceElement = document.querySelector('.buybox__buy-content--info > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > span:nth-child(1)');
       if (currentPriceElement) {
         const priceText = currentPriceElement.textContent.trim();
-        console.log('[NETSHOES] Preço atual encontrado com seletor específico:', priceText);
+        console.log('[NETSHOES] ✅ Preço atual encontrado com seletor específico:', priceText);
         currentPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
       }
       
       // Log dos preços encontrados
       console.log('[NETSHOES] Preços extraídos - Original:', originalPrice, 'Atual:', currentPrice);
       
-      // Se não encontrou com os seletores específicos, usar fallbacks
+      // Se não encontrou com os seletores específicos, usar fallbacks (seletores antigos)
       if (!currentPrice || !originalPrice) {
-        console.log('[NETSHOES] Usando seletores fallback...');
+        console.log('[NETSHOES] Usando seletores fallback antigos...');
         
-        // Fallback para preço atual
+        // Fallback com seletores antigos
+        if (!originalPrice) {
+          const oldOriginalElement = document.querySelector('div.price:nth-child(2) > div:nth-child(1) > div:nth-child(1) > span:nth-child(1)');
+          if (oldOriginalElement) {
+            const priceText = oldOriginalElement.textContent.trim();
+            console.log('[NETSHOES] ✅ Preço original com seletor antigo:', priceText);
+            originalPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
+          }
+        }
+        
+        if (!currentPrice) {
+          const oldCurrentElement = document.querySelector('div.price:nth-child(2) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > span:nth-child(1)');
+          if (oldCurrentElement) {
+            const priceText = oldCurrentElement.textContent.trim();
+            console.log('[NETSHOES] ✅ Preço atual com seletor antigo:', priceText);
+            currentPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
+          }
+        }
+        
+        // Se ainda não encontrou, usar outros fallbacks
         if (!currentPrice) {
           const priceSelectors = [
             '.default-price',
@@ -299,8 +318,8 @@ exports.scrapeProductData = async (url) => {
               const extractedPrice = extractPriceWithRS(priceText) || cleanPrice(priceText);
               if (extractedPrice) {
                 const priceValue = parseFloat(extractedPrice.replace(',', '.'));
-                // Só aceitar preços acima de R$ 50 para evitar promoções especiais
-                if (priceValue >= 50) {
+                // Só aceitar preços acima de R$ 20 para evitar promoções especiais
+                if (priceValue >= 20) {
                   currentPrice = extractedPrice;
                   console.log(`[NETSHOES] Preço atual fallback encontrado com ${selector}: ${currentPrice}`);
                   break;
@@ -310,7 +329,7 @@ exports.scrapeProductData = async (url) => {
           }
         }
         
-        // Fallback para preço original
+        // Se ainda não encontrou preço original
         if (!originalPrice) {
           const originalPriceSelectors = [
             '.old-price',
@@ -346,7 +365,7 @@ exports.scrapeProductData = async (url) => {
                 const priceValue = parseFloat(extractedPrice.replace(',', '.'));
                 // Verificar se o preço original é maior que o preço atual
                 const currentValue = currentPrice ? parseFloat(currentPrice.replace(',', '.')) : 0;
-                if (priceValue > currentValue && priceValue >= 100) {
+                if (priceValue > currentValue && priceValue >= 50) {
                   originalPrice = extractedPrice;
                   console.log(`[NETSHOES] Preço original fallback encontrado: ${originalPrice}`);
                   break;
@@ -423,6 +442,12 @@ exports.scrapeProductData = async (url) => {
       };
     });
     
+    // CORREÇÃO: Corrigir URL da imagem duplicada
+    if (productData.imageUrl && productData.imageUrl.startsWith('https://static.netshoes.com.brhttps://')) {
+      productData.imageUrl = productData.imageUrl.replace('https://static.netshoes.com.brhttps://', 'https://');
+      console.log('URL da imagem corrigida:', productData.imageUrl);
+    }
+    
     // Log para depuração
     console.log("Dados extraídos da Netshoes:", JSON.stringify(productData, null, 2));
     
@@ -436,9 +461,9 @@ exports.scrapeProductData = async (url) => {
     
     // Retornar dados fictícios em caso de erro para não quebrar a aplicação
     return {
-      name: "Tênis Esportivo Netshoes (Placeholder)",
-      currentPrice: "349",
-      originalPrice: "599",
+      name: "Produto Netshoes (Placeholder)",
+      currentPrice: "129",
+      originalPrice: "179",
       imageUrl: "https://static.netshoes.com.br/produtos/tenis-adidas-runfalcon-3-masculino/28/FB9-0006-128/FB9-0006-128_zoom1.jpg",
       vendor: "Netshoes",
       platform: "netshoes",
