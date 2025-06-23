@@ -664,7 +664,7 @@ function App() {
     // Adicionar link do produto
     message += `\n🛒 ${productData.productUrl || url}`;
     
-    message += `\n\n☑️ Link do grupo: https://linktr.ee/gdfit`;
+    message += `\n\n☑️ Link do grupo: https://linktr.ee/glowdeals`;
     
     return message;
   };
