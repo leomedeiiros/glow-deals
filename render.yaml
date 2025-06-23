@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: glow-promocoes-backend
+    name: gerador-promocoes-backend
     env: docker
     plan: free
-    buildCommand: docker build -t glow-promocoes-backend .
+    buildCommand: docker build -t gerador-promocoes-backend .
     startCommand: node backend/src/app.js
     envVars:
       - key: PORT
