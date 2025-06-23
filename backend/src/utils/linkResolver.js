@@ -84,59 +84,55 @@ exports.resolveUrl = async (shortenedUrl) => {
     const resolvedUrl = page.url();
     console.log(`URL resolvida: ${resolvedUrl}`);
     
-    // CORREÇÃO: Para links da Nike, tentar forçar redirecionamento para .com.br
-    if (resolvedUrl.includes('nike.com') && !resolvedUrl.includes('nike.com.br')) {
-      console.log(`Detectado link Nike internacional, tentando versão brasileira...`);
+    // CORREÇÃO: Para links da Nike, SEMPRE forçar redirecionamento para .com.br SEM VALIDAÇÃO
+    if (resolvedUrl.includes('nike.com')) {
+      console.log(`Detectado link Nike, convertendo para versão brasileira...`);
       
       // Extrair o path do produto
-      const productMatch = resolvedUrl.match(/nike\.com(\/[^?]+)/);
-      if (productMatch && productMatch[1]) {
-        const productPath = productMatch[1];
-        
-        // Tentar construir URL brasileira
-        let brazilianUrl = `https://www.nike.com.br${productPath}`;
-        
-        // Se tem parâmetros na URL original, preservar alguns importantes
-        const urlParams = new URL(resolvedUrl);
-        if (urlParams.searchParams.get('cor')) {
-          brazilianUrl += `?cor=${urlParams.searchParams.get('cor')}`;
-        }
-        
-        console.log(`Tentando URL brasileira: ${brazilianUrl}`);
-        
-        // Verificar se a URL brasileira funciona
-        try {
-          const testPage = await browser.newPage();
-          await testPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36');
-          
-          const response = await testPage.goto(brazilianUrl, { 
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-          });
-          
-          if (response.status() === 200) {
-            const pageContent = await testPage.evaluate(() => {
-              return {
-                title: document.title,
-                hasError: document.body.textContent.includes('Page not found') || 
-                         document.body.textContent.includes('Error') ||
-                         document.title.includes('Page not found'),
-                bodyLength: document.body.innerHTML.length
-              };
-            });
-            
-            if (!pageContent.hasError && pageContent.bodyLength > 5000) {
-              console.log(`✅ URL brasileira válida encontrada: ${brazilianUrl}`);
-              await testPage.close();
-              return brazilianUrl;
-            }
-          }
-          
-          await testPage.close();
-        } catch (error) {
-          console.log(`❌ Erro ao testar URL brasileira: ${error.message}`);
+      let productPath = '';
+      
+      // Tentar extrair path de diferentes formatos de URL da Nike
+      const pathPatterns = [
+        /nike\.com\/(.+)/,  // Padrão geral
+        /nike\.com\/([^?]+)/, // Sem parâmetros
+      ];
+      
+      for (const pattern of pathPatterns) {
+        const match = resolvedUrl.match(pattern);
+        if (match && match[1]) {
+          productPath = match[1];
+          break;
         }
       }
+      
+      if (productPath) {
+        // Limpar parâmetros desnecessários mas manter importantes
+        const urlObj = new URL(resolvedUrl);
+        const importantParams = ['cor', 'color', 'size'];
+        let cleanPath = productPath.split('?')[0]; // Remove todos os parâmetros
+        
+        // Verificar se há parâmetros importantes para preservar
+        let preservedParams = '';
+        for (const param of importantParams) {
+          const value = urlObj.searchParams.get(param);
+          if (value) {
+            preservedParams += preservedParams ? `&${param}=${value}` : `?${param}=${value}`;
+          }
+        }
+        
+        // Construir URL brasileira
+        const brazilianUrl = `https://www.nike.com.br/${cleanPath}${preservedParams}`;
+        
+        console.log(`✅ URL brasileira construída: ${brazilianUrl}`);
+        console.log(`🚀 FORÇANDO uso da URL brasileira (Nike bloqueia bots na validação)`);
+        
+        // RETORNAR DIRETO SEM VALIDAÇÃO - A NIKE BLOQUEIA BOTS
+        return brazilianUrl;
+      }
+      
+      // Se chegou aqui, não conseguiu extrair path
+      console.log(`⚠️ Não foi possível extrair path da URL Nike: ${resolvedUrl}`);
+      return resolvedUrl;
     }
     
     // Para links da Amazon, manter o formato original
@@ -203,11 +199,6 @@ exports.resolveUrl = async (shortenedUrl) => {
     
     // Para links da Netshoes
     if (resolvedUrl.includes('netshoes.com.br')) {
-      return resolvedUrl;
-    }
-    
-    // Para links da Nike - sempre retornar o que foi resolvido
-    if (resolvedUrl.includes('nike.com.br') || resolvedUrl.includes('nike.com/br') || resolvedUrl.includes('nike.com')) {
       return resolvedUrl;
     }
     

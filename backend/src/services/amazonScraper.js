@@ -45,84 +45,114 @@ exports.scrapeProductData = async (url) => {
     // Aguardar carregamento
     await wait(4000);
     
-    // Extrair dados com seletores específicos
+    // Extrair dados com seletores corretos baseados no debug
     const productData = await page.evaluate(() => {
-      // Função para limpar preço (só números inteiros)
-      const formatPrice = (price) => {
-        if (!price) return '';
-        return price.replace(/[^\d]/g, '').slice(0, -2) || price.replace(/[^\d]/g, '');
+      // Função para extrair apenas os números do preço (sem centavos)
+      const extractPrice = (priceText) => {
+        if (!priceText) return '';
+        // Extrair só a parte inteira (284 de R$284,90)
+        const match = priceText.match(/R?\$?\s*(\d+)/);
+        return match ? match[1] : priceText.replace(/[^\d]/g, '');
       };
       
-      // Nome do produto
+      // Nome do produto - CONFIRMADO NO DEBUG ✅
       const productTitle = document.querySelector('#productTitle')?.textContent.trim();
+      console.log(`[AMAZON] Nome extraído: "${productTitle}"`);
       
-      // PREÇO ATUAL - usando o seletor específico que você passou
+      // PREÇO ATUAL - SELETORES CORRETOS BASEADOS NO DEBUG
       let currentPrice = '';
       
-      // Seu seletor específico primeiro
-      const specificSelector = '#apex_desktop_newAccordionRow > div:nth-child(1) > div:nth-child(3) > div:nth-child(3)';
-      const specificElement = document.querySelector(specificSelector);
+      // Seletor principal: elemento 35 do debug ✅
+      const mainPriceElement = document.querySelector('.a-price.aok-align-center.reinventPricePriceToPayMargin.priceToPay');
+      if (mainPriceElement) {
+        const priceText = mainPriceElement.textContent.trim();
+        console.log(`[AMAZON] ✅ Preço principal encontrado: "${priceText}"`);
+        currentPrice = extractPrice(priceText);
+      }
       
-      if (specificElement && specificElement.textContent) {
-        const priceText = specificElement.textContent.trim();
-        console.log(`Texto do seletor específico: "${priceText}"`);
-        
-        // Extrair o preço principal (R$ 37,97)
-        const priceMatch = priceText.match(/R\$\s*(\d+),\d+/);
-        if (priceMatch) {
-          currentPrice = priceMatch[1];
-          console.log(`Preço extraído: ${currentPrice}`);
+      // Fallback 1: Seletor que funcionou no debug ✅
+      if (!currentPrice) {
+        const fallback1 = document.querySelector('.reinventPricePriceToPayMargin > span:nth-child(2)');
+        if (fallback1) {
+          const priceText = fallback1.textContent.trim();
+          console.log(`[AMAZON] ✅ Fallback 1 encontrado: "${priceText}"`);
+          currentPrice = extractPrice(priceText);
         }
       }
       
-      // Fallback se não encontrou
+      // Fallback 2: Buscar por qualquer reinventPrice
       if (!currentPrice) {
-        const fallbackSelectors = [
-          '.a-price.priceToPay .a-offscreen',
-          '.a-price .a-offscreen',
-          '#priceblock_ourprice',
-          '#priceblock_dealprice'
-        ];
-        
-        for (const selector of fallbackSelectors) {
-          const element = document.querySelector(selector);
-          if (element && element.textContent) {
-            const priceText = element.textContent.trim();
-            if (priceText.includes('R$')) {
-              const priceMatch = priceText.match(/R\$\s*(\d+)/);
-              if (priceMatch) {
-                currentPrice = priceMatch[1];
-                console.log(`Preço fallback: ${currentPrice}`);
-                break;
-              }
+        const fallback2 = document.querySelector('[class*="reinventPrice"]');
+        if (fallback2) {
+          const priceText = fallback2.textContent.trim();
+          console.log(`[AMAZON] ✅ Fallback 2 encontrado: "${priceText}"`);
+          currentPrice = extractPrice(priceText);
+        }
+      }
+      
+      // Fallback 3: Elemento 0 do debug (genérico)
+      if (!currentPrice) {
+        const fallback3 = document.querySelector('.a-price.aok-align-center');
+        if (fallback3) {
+          const priceText = fallback3.textContent.trim();
+          if (priceText.includes('R$') && priceText.match(/\d+,\d+/)) {
+            console.log(`[AMAZON] ✅ Fallback 3 encontrado: "${priceText}"`);
+            currentPrice = extractPrice(priceText);
+          }
+        }
+      }
+      
+      // Fallback 4: Buscar em TODOS os elementos de preço
+      if (!currentPrice) {
+        const allPriceElements = document.querySelectorAll('.a-price');
+        for (const element of allPriceElements) {
+          const text = element.textContent.trim();
+          if (text.includes('R$') && text.match(/\d+,\d+/) && text.includes('284')) {
+            console.log(`[AMAZON] ✅ Fallback 4 encontrado: "${text}"`);
+            currentPrice = extractPrice(text);
+            break;
+          }
+        }
+      }
+      
+      // PREÇO ORIGINAL (riscado) - melhorado
+      let originalPrice = '';
+      
+      // Procurar por preços riscados
+      const originalPriceSelectors = [
+        '.a-text-price .a-offscreen',
+        '.a-price.a-text-price .a-offscreen',
+        'span[style*="text-decoration: line-through"]',
+        's .a-price-whole',
+        's',
+        'del'
+      ];
+      
+      for (const selector of originalPriceSelectors) {
+        const element = document.querySelector(selector);
+        if (element && element.textContent) {
+          const priceText = element.textContent.trim();
+          if (priceText.includes('R$')) {
+            const extractedPrice = extractPrice(priceText);
+            // Só considerar como original se for MAIOR que o atual
+            if (extractedPrice && parseInt(extractedPrice) > parseInt(currentPrice || 0)) {
+              originalPrice = extractedPrice;
+              console.log(`[AMAZON] ✅ Preço original encontrado: ${originalPrice}`);
+              break;
             }
           }
         }
       }
       
-      // PREÇO ORIGINAL (riscado) - mais conservador
-      let originalPrice = '';
-      
-      const originalSelectors = [
-        '.a-text-price .a-offscreen',
-        '.a-price.a-text-price .a-offscreen'
-      ];
-      
-      for (const selector of originalSelectors) {
-        const element = document.querySelector(selector);
-        if (element && element.textContent) {
-          const priceText = element.textContent.trim();
-          if (priceText.includes('R$')) {
-            const priceMatch = priceText.match(/R\$\s*(\d+)/);
-            if (priceMatch) {
-              const price = priceMatch[1];
-              // Só considerar como original se for MAIOR que o atual
-              if (parseInt(price) > parseInt(currentPrice)) {
-                originalPrice = price;
-                console.log(`Preço original: ${originalPrice}`);
-                break;
-              }
-            }
+      // Se não encontrou preço original, procurar por padrões "De R$ X"
+      if (!originalPrice) {
+        const bodyText = document.body.textContent;
+        const deRegexMatch = bodyText.match(/De\s*R\$\s*(\d+)/);
+        if (deRegexMatch) {
+          const dePrice = deRegexMatch[1];
+          if (parseInt(dePrice) > parseInt(currentPrice || 0)) {
+            originalPrice = dePrice;
+            console.log(`[AMAZON] ✅ Preço original via regex: ${originalPrice}`);
           }
         }
       }
@@ -141,7 +171,7 @@ exports.scrapeProductData = async (url) => {
         vendor: 'Amazon'
       };
       
-      console.log('Resultado Amazon:', result);
+      console.log('[AMAZON] ✅ Resultado final:', result);
       return result;
     });
     

@@ -140,17 +140,47 @@ const MessagePreview = ({
     // Se não tiver dados do produto, retornar vazio
     if (!productData) return '';
     
-    // NOVA LÓGICA: Detectar se vem dos sites originais (Nike, Centauro, Netshoes)
-    const isFromOriginalNike = productData.platform === 'nike' || 
-                              (productData.vendor && productData.vendor.toLowerCase().includes('nike'));
-    const isFromOriginalCentauro = productData.platform === 'centauro' || 
-                                  (productData.vendor && productData.vendor.toLowerCase().includes('centauro'));
-    const isFromOriginalNetshoes = productData.platform === 'netshoes' || 
-                                  (productData.vendor && productData.vendor.toLowerCase().includes('netshoes'));
-    const isFromOriginalShopee = productData.platform === 'shopee' || 
-                                (productData.vendor && productData.vendor.toLowerCase().includes('shopee'));
+    // CORREÇÃO: VERIFICAR PRIMEIRO A PLATAFORMA/URL para priorizar Mercado Livre
+    const isMercadoLivre = 
+      (productData.productUrl && (productData.productUrl.includes('mercadolivre') || productData.productUrl.includes('mercadolibre'))) ||
+      (productData.platform && typeof productData.platform === 'string' && 
+       (productData.platform.toLowerCase().includes('mercadolivre') || 
+        productData.platform.toLowerCase().includes('mercadolibre'))) ||
+      (productData.vendor && productData.vendor.toLowerCase().includes('mercado livre'));
     
-    // PRIORIDADE: Se vem dos sites originais, usar "Site oficial"
+    const isAmazon = 
+      (productData.productUrl && (productData.productUrl.includes('amazon.com') || productData.productUrl.includes('amazon.com.br'))) ||
+      (productData.platform && typeof productData.platform === 'string' && 
+       productData.platform.toLowerCase().includes('amazon')) ||
+      (productData.vendor && productData.vendor.toLowerCase().includes('amazon'));
+    
+    const isShopee = 
+      (productData.productUrl && productData.productUrl.includes('shopee.com.br')) ||
+      (productData.platform && typeof productData.platform === 'string' && 
+       productData.platform.toLowerCase().includes('shopee')) ||
+      (productData.vendor && productData.vendor.toLowerCase().includes('shopee'));
+    
+    // NOVA LÓGICA: Detectar se vem dos sites originais (Nike, Centauro, Netshoes)
+    // MAS SÓ APLICAR SE NÃO FOR MERCADO LIVRE, AMAZON OU SHOPEE
+    const isFromOriginalNike = !isMercadoLivre && !isAmazon && !isShopee && (
+      productData.platform === 'nike' || 
+      (productData.productUrl && (productData.productUrl.includes('nike.com.br') || productData.productUrl.includes('nike.com/br'))) ||
+      (productData.vendor && productData.vendor.toLowerCase().includes('nike'))
+    );
+    
+    const isFromOriginalCentauro = !isMercadoLivre && !isAmazon && !isShopee && (
+      productData.platform === 'centauro' || 
+      (productData.productUrl && productData.productUrl.includes('centauro.com.br')) ||
+      (productData.vendor && productData.vendor.toLowerCase().includes('centauro'))
+    );
+    
+    const isFromOriginalNetshoes = !isMercadoLivre && !isAmazon && !isShopee && (
+      productData.platform === 'netshoes' || 
+      (productData.productUrl && productData.productUrl.includes('netshoes.com.br')) ||
+      (productData.vendor && productData.vendor.toLowerCase().includes('netshoes'))
+    );
+    
+    // PRIORIDADE: Se vem dos sites originais (e não é marketplace), usar "Site oficial"
     if (isFromOriginalNike) {
       return 'Site oficial Nike';
     }
@@ -169,22 +199,26 @@ const MessagePreview = ({
     }
     
     if (storeType === 'loja_oficial') {
-      // Para produtos que não vêm dos sites originais, usar a lógica antiga
-      if (isFromOriginalShopee) {
+      // Para Shopee
+      if (isShopee) {
         return 'Loja oficial na Shopee';
       }
       
-      if (productData.vendor && productData.vendor !== 'Mercado Livre') {
-        // Limpar nome do vendedor e garantir bom espaçamento
-        const cleanName = cleanVendorName(productData.vendor);
-        return `Loja oficial ${cleanName} no Mercado Livre`;
+      // Para Mercado Livre (SEMPRE usar formato "no Mercado Livre")
+      if (isMercadoLivre) {
+        if (productData.vendor && productData.vendor !== 'Mercado Livre') {
+          // Limpar nome do vendedor e garantir bom espaçamento
+          const cleanName = cleanVendorName(productData.vendor);
+          return `Loja oficial ${cleanName} no Mercado Livre`;
+        }
+        return 'Loja oficial no Mercado Livre';
       }
       
       return 'Loja oficial no Mercado Livre';
     }
     
     if (storeType === 'loja_validada') {
-      if (isFromOriginalShopee) {
+      if (isShopee) {
         return 'Loja validada na Shopee';
       }
       return 'Loja validada no Mercado Livre';
