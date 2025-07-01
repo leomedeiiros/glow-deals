@@ -10,12 +10,40 @@ const generateUniqueFilename = () => {
 };
 
 // Função para gerar título com IA 
-exports.generateTitle = async (prompt, apiKey, productData) => {
+exports.generateTitle = async (apiKey, productData) => {
  try {
    console.log('Gerando título com API Gemini para o produto:', productData.name);
    
-   // MUDANÇA: Usar apenas o prompt do frontend + dados básicos do produto
-   const enhancedPrompt = `${prompt}. Produto: ${productData.name}`;
+   // PROMPT FIXO NO CÓDIGO
+   const fixedPrompt = `Gere uma frase curta, criativa e no estilo de meme, começando com um emoji chamativo, como aquelas que usamos no WhatsApp para chamar atenção antes de anunciar um produto.
+* A frase deve gerar curiosidade, humor ou sensação de urgência.
+* Evite frases comuns ou genéricas.
+* Use o mesmo estilo que Glow Deals aplica: direto, popular, com emoção ou engraçado, parecendo algo que um amigo mandaria no grupo dizendo "olha isso aqui".
+* Não mencione o nome do produto.
+* A frase deve refletir o benefício, uso, público ou apelo emocional do produto em questão.
+Crie apenas **uma frase** nesse estilo. Não explique nada. Apenas retorne a frase pronta para ser colada no WhatsApp.
+**Exemplos de frases do estilo que quero:**
+* 🔥 Quem tem bom gosto já clicou
+* 🧼 Esse aqui vai sumir do estoque igual sabão no banho
+* 🎯 O favorito de quem entende do assunto
+* 💥 Acabou a desculpa, agora dá pra levar
+* 😍 Eu juro que esse foi o mais top que já vi
+* 🧠 Quem sabe, sabe… esse aqui é diferenciado
+* 🚨 Piscou, acabou!
+* 🛒 Se demorar, vai ficar sem
+* 🤐 Quem comprou não conta pra ninguém
+* 🤑 Essa oferta parece mentira
+* 🤯 Esse aqui virou lenda no grupo
+* 👀 Olha esse aqui e tenta não surtar
+* 🙌 Finalmente achei o que eu queria
+* 🔥 Cheiroso desse jeito devia ser proibido
+* 🧦 Adeus gaveta bagunçada, olá paz interior
+* 🛠️ Nunca mais vai sofrer pra furar cinto
+* 👟 Quem experimenta, não quer mais outro
+* 💆 Esse aqui relaxa até pensamento
+* 🎧 Solta o play e esquece o mundo
+* 🧔 Agora é barba de respeito ou nada
+**Importante:** adapte a frase para combinar com o tipo de produto: ${productData.name}.`;
    
    // URL da API Gemini para texto
    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
@@ -25,7 +53,7 @@ exports.generateTitle = async (prompt, apiKey, productData) => {
      contents: [
        {
          parts: [
-           { text: enhancedPrompt }
+           { text: fixedPrompt }
          ]
        }
      ],

@@ -161,6 +161,34 @@ exports.sendWhatsApp = async (req, res) => {
   }
 };
 
+exports.generateAITitle = async (req, res) => {
+  try {
+    const { apiKey, productData } = req.body;
+    
+    if (!apiKey || !productData) {
+      return res.status(400).json({ 
+        error: 'Chave de API e dados do produto são obrigatórios' 
+      });
+    }
+    
+    console.log(`Iniciando geração de título para produto: "${productData.name}"`);
+    
+    const result = await geminiService.generateTitle(apiKey, productData);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
+    }
+  } catch (error) {
+    console.error('Erro ao gerar título com IA:', error);
+    res.status(500).json({ 
+      error: 'Falha ao gerar título com IA', 
+      details: error.message 
+    });
+  }
+};
+
 exports.generateAIImage = async (req, res) => {
   try {
     const { prompt, apiKey, productData } = req.body;

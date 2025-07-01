@@ -68,6 +68,9 @@ router.post('/upload-image', upload.single('image'), (req, res) => {
   }
 });
 
+// Rota para geração de título com IA
+router.post('/generate-ai-title', scrapeController.generateAITitle);
+
 // Rota para geração de imagem com IA
 router.post('/generate-ai-image', scrapeController.generateAIImage);
 
