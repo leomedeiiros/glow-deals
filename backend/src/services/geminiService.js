@@ -46,7 +46,7 @@ Crie apenas **uma frase** nesse estilo. Não explique nada. Apenas retorne a fra
 **Importante:** adapte a frase para combinar com o tipo de produto: ${productData.name}.`;
    
    // URL da API Gemini para texto
-   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
    
    // Preparar payload para a API Gemini
    const payload = {

@@ -44,7 +44,7 @@ function App() {
  
  // NOVO: API Gemini e títulos divertidos
  // Token fixo para API Gemini - não precisa mais de estado ou input do usuário
- const geminiApiKey = 'AIzaSyAZQbdDzDs3shmUTLpB3v3kfE_CE6R8SLo';
+ const geminiApiKey = 'AIzaSyD2Hz-xIvEy2dqAQ-giS-XzAqvpZR5Isu4';
  const [generatedTitle, setGeneratedTitle] = useState('');
  const [generatingTitle, setGeneratingTitle] = useState(false);
  const [aiImageSectionOpen, setAiImageSectionOpen] = useState(false);
