@@ -295,80 +295,98 @@ function App() {
   };
   
   // Geração de título com IA
-  const handleGenerateTitle = async () => {
-    if (!productData) {
-      setError('Você precisa extrair os dados de um produto primeiro.');
-      return;
-    }
+const handleGenerateTitle = async () => {
+  if (!productData) {
+    setError('Você precisa extrair os dados de um produto primeiro.');
+    return;
+  }
+  
+  try {
+    setGeneratingTitle(true);
+    setError('');
     
-    try {
-      setGeneratingTitle(true);
-      setError('');
-      
-      const enhancedPrompt = `Você é um especialista em criar títulos curtos, criativos e humorísticos para anúncios de produtos no WhatsApp.
-Crie um título totalmente em LETRAS MAIÚSCULAS, com no máximo 50 caracteres, que seja chamativo, divertido e que possa ter duplo sentido ou brincar com memes, gírias e trocadilhos.
-O produto é: ${productData.name}.
-Use o estilo destes exemplos para se inspirar:
-- "ÚNICO VEÍCULO QUE CONSIGO COMPRAR" (bicicleta)
-- "NEO QLED DA SAMSUNG TEM QUALIDADE ABSURDA" (TV)
-- "O ÚNICO TIGRINHO QUE VALE INVESTIR" (cuecas da Puma)
-Regras importantes:
-- O título deve provocar curiosidade ou dar vontade de clicar
-- Pode usar expressões populares, memes e referências do mundo gamer ou tech.
-- Responda APENAS com o título, sem nenhum texto adicional.`;
-      
-      const response = await axios.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
-        contents: [{ parts: [{ text: enhancedPrompt }] }],
-        generationConfig: {
-          temperature: 0.9,
-          maxOutputTokens: 50
-        }
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': geminiApiKey
-        }
-      });
-      
-      if (response.data && 
-          response.data.candidates && 
-          response.data.candidates[0] && 
-          response.data.candidates[0].content &&
-          response.data.candidates[0].content.parts) {
-        
-        const generatedText = response.data.candidates[0].content.parts[0].text;
-        console.log("Título gerado:", generatedText);
-        
-        const cleanTitle = generatedText.replace(/^["'\s]+|["'\s]+$/g, '');
-        
-        setGeneratedTitle(cleanTitle);
-        
-        if (messagePreviewRef.current && finalMessage) {
-          let updatedMessage = finalMessage;
-          if (updatedMessage.startsWith('_') && updatedMessage.includes('_\n')) {
-            updatedMessage = updatedMessage.replace(/^_[^_\n]*_/, `_${cleanTitle}_`);
-          } else if (updatedMessage.startsWith('*') && updatedMessage.includes('*\n')) {
-            updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage.substring(updatedMessage.indexOf('\n\n') + 2);
-          } else {
-            updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage;
-          }
-          setFinalMessage(updatedMessage);
-          messagePreviewRef.current.innerHTML = updatedMessage;
-        }
-        
-      } else {
-        setError('Não foi possível gerar um título. Tente novamente.');
+    // NOVO PROMPT ATUALIZADO
+    const enhancedPrompt = `Crie uma única frase curta, criativa e com tom de meme, no estilo das mensagens de WhatsApp que chamam atenção antes de uma oferta. A frase deve parecer algo que um amigo mandaria no grupo pra dizer "olha isso aqui".
+
+O produto é: ${productData.name}
+
+Instruções obrigatórias:
+- Comece com um emoji chamativo.
+- A frase deve causar curiosidade, humor ou urgência.
+- Use um estilo descontraído, jovem e popular — como linguagem de internet ou de grupo de WhatsApp.
+- Não mencione o nome do produto.
+- Foque no benefício, uso, público ou apelo emocional do produto.
+- Não repita frases já geradas anteriormente. Fuja de variações óbvias.
+- Crie ideias novas a cada geração, mesmo para o mesmo produto.
+- Não se limite aos exemplos fornecidos. Eles servem apenas como referência de tom e estilo. Você pode se inspirar ou ignorá-los.
+- Entenda o produto e crie a frase com base real nele, como se fosse um copywriter criativo fazendo uma frase viral.
+- Gere apenas uma frase por vez — sem explicações.
+
+Exemplos de estilo (apenas como referência, não para repetir):
+🔥 Cheiroso desse jeito devia ser proibido
+🧦 Adeus gaveta bagunçada, olá paz interior
+🎧 Solta o play e esquece o mundo
+🤐 Quem comprou não conta pra ninguém
+💥 Acabou a desculpa, agora dá pra levar
+
+IMPORTANTE:
+→ Crie uma ideia nova de verdade a cada geração.
+→ Use criatividade contextual ao produto.
+→ Não repita estrutura, não imite literalmente os exemplos.
+→ Retorne somente a frase pronta.`;
+    
+    const response = await axios.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
+      contents: [{ parts: [{ text: enhancedPrompt }] }],
+      generationConfig: {
+        temperature: 0.9,
+        maxOutputTokens: 50
       }
-    } catch (error) {
-      console.error('Erro ao gerar título com IA:', error);
-      setError(
-        error.response?.data?.error?.message || 
-        'Falha ao gerar título. Verifique sua conexão e tente novamente.'
-      );
-    } finally {
-      setGeneratingTitle(false);
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': geminiApiKey
+      }
+    });
+    
+    if (response.data && 
+        response.data.candidates && 
+        response.data.candidates[0] && 
+        response.data.candidates[0].content &&
+        response.data.candidates[0].content.parts) {
+      
+      const generatedText = response.data.candidates[0].content.parts[0].text;
+      console.log("Título gerado:", generatedText);
+      
+      const cleanTitle = generatedText.replace(/^["'\s]+|["'\s]+$/g, '');
+      
+      setGeneratedTitle(cleanTitle);
+      
+      if (messagePreviewRef.current && finalMessage) {
+        let updatedMessage = finalMessage;
+        if (updatedMessage.startsWith('_') && updatedMessage.includes('_\n')) {
+          updatedMessage = updatedMessage.replace(/^_[^_\n]*_/, `_${cleanTitle}_`);
+        } else if (updatedMessage.startsWith('*') && updatedMessage.includes('*\n')) {
+          updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage.substring(updatedMessage.indexOf('\n\n') + 2);
+        } else {
+          updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage;
+        }
+        setFinalMessage(updatedMessage);
+        messagePreviewRef.current.innerHTML = updatedMessage;
+      }
+      
+    } else {
+      setError('Não foi possível gerar um título. Tente novamente.');
     }
-  };
+  } catch (error) {
+    console.error('Erro ao gerar título com IA:', error);
+    setError(
+      error.response?.data?.error?.message || 
+      'Falha ao gerar título. Verifique sua conexão e tente novamente.'
+    );
+  } finally {
+    setGeneratingTitle(false);
+  }
+};
   
   // Remover imagem
   const removeCustomImage = () => {
@@ -986,82 +1004,82 @@ Regras importantes:
         </div>
     </div>
 
-    {/* Seção Geração de Título (IA) */}
-    <div className="form-section">
-        <div className={`section-header ${!aiImageSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('aiImage')}>
-            <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-            </svg>
-            <span className="section-title">Geração de Título (IA)</span>
-            <span className="feature-tag">OPCIONAL</span>
-            <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
-        </div>
-        
-        <div className={`section-content ${!aiImageSectionOpen ? 'collapsed' : ''}`}>
-            <div className="form-group">
-                <label className="form-label">Geração Automática de Título</label>
-                <p className="form-description">
-                    Clique no botão abaixo para gerar automaticamente um título criativo e divertido para seu produto usando IA.
-                </p>
-                
-                <button 
-                    className="btn-secondary"
-                    onClick={handleGenerateTitle}
-                    disabled={generatingTitle || !productData}
-                >
-                    {generatingTitle ? (
-                        <>
-                            <div className="loading"></div>
-                            Gerando...
-                        </>
-                    ) : (
-                        <>
-                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                            </svg>
-                            Gerar Título Criativo
-                        </>
-                    )}
-                </button>
-                
-                {generatedTitle && (
-                    <div style={{ 
-                        marginTop: '15px', 
-                        padding: '12px 16px', 
-                        background: 'rgba(16, 185, 129, 0.1)', 
-                        borderRadius: '8px',
-                        border: '1px solid rgba(16, 185, 129, 0.2)'
-                    }}>
-                        <p style={{ 
-                            fontWeight: '600', 
-                            marginBottom: '6px', 
-                            color: 'var(--text-secondary)',
-                            fontSize: '13px'
-                        }}>Título gerado:</p>
-                        <p style={{ 
-                            fontFamily: 'JetBrains Mono, monospace', 
-                            fontStyle: 'italic',
-                            fontSize: '14px',
-                            fontWeight: '600',
-                            background: 'rgba(0,0,0,0.1)',
-                            padding: '8px 12px',
-                            borderRadius: '6px',
-                            color: 'var(--text-primary)'
-                        }}>{generatedTitle}</p>
-                    </div>
+ {/* Seção Geração de Título (IA) */}
+<div className="form-section">
+    <div className={`section-header ${!aiImageSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('aiImage')}>
+        <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+        </svg>
+        <span className="section-title">Geração de Título (IA)</span>
+        <span className="feature-tag">OPCIONAL</span>
+        <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+    </div>
+    
+    <div className={`section-content ${!aiImageSectionOpen ? 'collapsed' : ''}`}>
+        <div className="form-group">
+            <label className="form-label">Geração de Frase Viral</label>
+            <p className="form-description">
+                Clique no botão abaixo para gerar uma frase criativa e viral no estilo de WhatsApp, como se fosse um amigo mandando no grupo.
+            </p>
+            
+            <button 
+                className="btn-secondary"
+                onClick={handleGenerateTitle}
+                disabled={generatingTitle || !productData}
+            >
+                {generatingTitle ? (
+                    <>
+                        <div className="loading"></div>
+                        Gerando...
+                    </>
+                ) : (
+                    <>
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Gerar Frase Viral
+                    </>
                 )}
-                
-                <div className="info-alert">
-                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                    </svg>
-                    O título será adicionado automaticamente no início da sua mensagem. Você pode editar manualmente depois se quiser.
+            </button>
+            
+            {generatedTitle && (
+                <div style={{ 
+                    marginTop: '15px', 
+                    padding: '12px 16px', 
+                    background: 'rgba(16, 185, 129, 0.1)', 
+                    borderRadius: '8px',
+                    border: '1px solid rgba(16, 185, 129, 0.2)'
+                }}>
+                    <p style={{ 
+                        fontWeight: '600', 
+                        marginBottom: '6px', 
+                        color: 'var(--text-secondary)',
+                        fontSize: '13px'
+                    }}>Frase gerada:</p>
+                    <p style={{ 
+                        fontFamily: 'JetBrains Mono, monospace', 
+                        fontStyle: 'italic',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        background: 'rgba(0,0,0,0.1)',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)'
+                    }}>{generatedTitle}</p>
                 </div>
+            )}
+            
+            <div className="info-alert">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                A frase será adicionada automaticamente no início da sua mensagem. Você pode editar manualmente depois se quiser.
             </div>
         </div>
     </div>
+</div>
 
     {/* Seção Gerar Mensagens em Lote */}
     <div className="form-section">
