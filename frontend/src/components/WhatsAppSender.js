@@ -1,3 +1,4 @@
+// frontend/src/components/WhatsAppSender.js
 import React from 'react';
 
 const WhatsAppSender = ({ message, className, imageFile }) => {
@@ -7,42 +8,33 @@ const WhatsAppSender = ({ message, className, imageFile }) => {
       return;
     }
 
-    // Verificar se é dispositivo móvel
     const isMobile = /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent);
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
     
-    // Tentar usar Web Share API com arquivos primeiro, se houver arquivo
     if (imageFile && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
       try {
         await navigator.share({
           text: message,
           files: [imageFile]
         });
-        return; // Se compartilhou com sucesso, encerra a função
+        return;
       } catch (err) {
         console.warn('Compartilhamento com arquivo falhou:', err);
-        // Continua para o fallback abaixo
       }
     }
     
-    // Para dispositivos móveis sem anexos
     if (isMobile) {
-      // Em dispositivos iOS, use URL específica
       if (isIOS) {
-        // No iOS tente abrir direto no app com URL específica
         window.location.href = `whatsapp://send?text=${encodeURIComponent(message)}`;
         
-        // Fallback se a página ainda estiver ativa após um curto período
         setTimeout(() => {
           if (document.hasFocus()) {
             window.location = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
           }
         }, 300);
       } else {
-        // Para Android, use primeiro a URL do aplicativo
         window.location.href = `whatsapp://send?text=${encodeURIComponent(message)}`;
         
-        // Fallback para o link web
         setTimeout(() => {
           if (document.hasFocus()) {
             window.location = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
@@ -50,19 +42,20 @@ const WhatsAppSender = ({ message, className, imageFile }) => {
         }, 300);
       }
     } else {
-      // Em desktop, abrir o WhatsApp Web
       window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(message)}`, '_blank');
     }
   };
 
   return (
     <button 
-      className={className || "share-btn"}
+      className={className || "whatsapp-action"}
       onClick={handleDirectWhatsApp}
       disabled={!message}
     >
-      <i className="fab fa-whatsapp"></i>
-      Compartilhar no WhatsApp
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413"/>
+      </svg>
+      WHATSAPP
     </button>
   );
 };

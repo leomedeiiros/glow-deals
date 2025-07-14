@@ -1,15 +1,13 @@
 // frontend/src/App.js
-// No topo do arquivo App.js
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
-import LinkForm from './components/LinkForm';
 import MessagePreview from './components/MessagePreview';
-import { API_BASE_URL } from './config';  // Importando do lugar correto
-import { scrapeProduct, uploadImage, sendWhatsAppMessage } from './services/api';  // Removi generateAIImage da importação
+import { API_BASE_URL } from './config';
+import { scrapeProduct, uploadImage } from './services/api';
 
 function App() {
-  // Carregar dados salvos do localStorage
+  // Estados existentes mantidos
   const loadFromLocalStorage = (key, defaultValue) => {
     try {
       const item = localStorage.getItem(key);
@@ -20,7 +18,6 @@ function App() {
     }
   };
 
-  // Função para salvar no localStorage
   const saveToLocalStorage = (key, value) => {
     try {
       localStorage.setItem(key, JSON.stringify(value));
@@ -29,26 +26,26 @@ function App() {
     }
   };
 
-  // Histórico de links usados
+  // Estados principais
   const [recentLinks, setRecentLinks] = useState(loadFromLocalStorage('recentLinks', []));
   const [recentCoupons, setRecentCoupons] = useState(loadFromLocalStorage('recentCoupons', []));
   const [recentDiscounts, setRecentDiscounts] = useState(loadFromLocalStorage('recentDiscounts', []));
   const [recentDiscountValues, setRecentDiscountValues] = useState(loadFromLocalStorage('recentDiscountValues', []));
   
-  // NOVO: Processamento em massa
+  // Estados de processamento em lote
   const [batchLinks, setBatchLinks] = useState('');
   const [batchProcessing, setBatchProcessing] = useState(false);
   const [batchResults, setBatchResults] = useState([]);
   const [batchSectionOpen, setBatchSectionOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   
-  // NOVO: API Gemini e títulos divertidos
-  // Token fixo para API Gemini - não precisa mais de estado ou input do usuário
+  // API Gemini para títulos
   const geminiApiKey = 'AIzaSyAZQbdDzDs3shmUTLpB3v3kfE_CE6R8SLo';
   const [generatedTitle, setGeneratedTitle] = useState('');
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [aiImageSectionOpen, setAiImageSectionOpen] = useState(false);
 
+  // Estados principais do formulário
   const [url, setUrl] = useState('');
   const [productData, setProductData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -57,26 +54,25 @@ function App() {
   const [storeType, setStoreType] = useState('');
   const [vendorName, setVendorName] = useState('');
   const [discountPercentage, setDiscountPercentage] = useState('');
-  const [discountValue, setDiscountValue] = useState(''); // Novo estado para desconto em R$
+  const [discountValue, setDiscountValue] = useState('');
   const [finalMessage, setFinalMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   
-  // Estado para a imagem personalizada
+  // Estados para imagem
   const [customImage, setCustomImage] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [imageFile, setImageFile] = useState(null); // Para armazenar o objeto File da imagem
+  const [imageFile, setImageFile] = useState(null);
   
-  // Estados para controlar quais seções estão abertas
+  // Estados das seções colapsáveis
   const [infoSectionOpen, setInfoSectionOpen] = useState(true);
-  const [storeSectionOpen, setStoreSectionOpen] = useState(true); // Agora inicia expandido
+  const [storeSectionOpen, setStoreSectionOpen] = useState(true);
   const [imageSectionOpen, setImageSectionOpen] = useState(false);
   
-  // Referência para a prévia da mensagem editável
   const messagePreviewRef = useRef(null);
   const mainCardRef = useRef(null);
 
-  // Salvar histórico quando valores mudam
+  // Efeitos para salvar no localStorage
   useEffect(() => {
     saveToLocalStorage('recentLinks', recentLinks);
   }, [recentLinks]);
@@ -93,42 +89,21 @@ function App() {
     saveToLocalStorage('recentDiscountValues', recentDiscountValues);
   }, [recentDiscountValues]);
   
-  // Função para adicionar ao histórico sem duplicar
+  // Função para adicionar ao histórico
   const addToHistory = (value, setter, currentArray, maxItems = 10) => {
     if (!value || value.trim() === '') return;
     
-    // Remover duplicata se existir
     const newArray = currentArray.filter(item => item !== value);
-    
-    // Adicionar novo valor no início
     newArray.unshift(value);
     
-    // Limitar tamanho
     if (newArray.length > maxItems) {
       newArray.pop();
     }
     
-    // Atualizar estado
     setter(newArray);
   };
 
-  // Converte preço para formato numérico para cálculos (preserva para funções de desconto)
-  const priceToNumber = (priceStr) => {
-    if (!priceStr) return 0;
-    
-    // Converter para string se não for
-    const priceString = String(priceStr);
-    
-    // Formato brasileiro (1.299,90) -> 1299.90
-    if (priceString.includes(',')) {
-      return parseFloat(priceString.replace(/\./g, '').replace(',', '.'));
-    }
-    
-    // Formato americano ou já numérico
-    return parseFloat(priceString);
-  };
-
-  // SOLUÇÃO PARA PREÇOS ACIMA DE 999 QUE PRESERVA FUNCIONALIDADE DE DESCONTOS
+  // Função para processar dados do produto
   const handleProductDataReceived = (data, url) => {
     if (data) {
       console.log("Dados originais do produto:", {
@@ -136,12 +111,9 @@ function App() {
         originalPrice: data.originalPrice
       });
       
-      // Criar cópias dos preços originais para uso nos cálculos de desconto
-      // Isso garante que o desconto seja calculado corretamente
       if (data.currentPrice) {
         data.displayPrice = data.currentPrice;
         
-        // Verificar se precisamos remover centavos mantendo o formato de milhar
         if (typeof data.displayPrice === 'string' && data.displayPrice.includes(',')) {
           data.displayPrice = data.displayPrice.split(',')[0];
           console.log("Preço de exibição corrigido para:", data.displayPrice);
@@ -151,7 +123,6 @@ function App() {
       if (data.originalPrice) {
         data.displayOriginalPrice = data.originalPrice;
         
-        // Verificar se precisamos remover centavos mantendo o formato de milhar
         if (typeof data.displayOriginalPrice === 'string' && data.displayOriginalPrice.includes(',')) {
           data.displayOriginalPrice = data.displayOriginalPrice.split(',')[0];
           console.log("Preço original de exibição corrigido para:", data.displayOriginalPrice);
@@ -161,12 +132,11 @@ function App() {
     
     setProductData(data);
     
-    // Adicionar URL ao histórico 
     if (url) {
       addToHistory(url, setRecentLinks, recentLinks);
     }
     
-    // Verificar se o link é do Mercado Livre para definir corretamente o tipo de loja
+    // Detectar tipo de loja
     const isMercadoLivre = 
       (url && (url.includes('mercadolivre') || url.includes('mercadolibre'))) ||
       (data.vendor && data.vendor.toLowerCase().includes('mercado livre')) ||
@@ -204,25 +174,21 @@ function App() {
       (data.platform && typeof data.platform === 'string' && 
        data.platform.toLowerCase().includes('shopee'));
       
-    // DEFINIR TIPO DE LOJA PADRÃO
+    // Definir tipo de loja padrão
     if (isAmazon) {
       setStoreType('amazon');
     } else if (isMercadoLivre) {
-      // Para o Mercado Livre, definir SEMPRE como "loja_oficial" por padrão
       setStoreType('loja_oficial');
     } else if (isShopee) {
       setStoreType('loja_validada');
     } else if (isCentauro || isNetshoes || isNike) {
-      // Para lojas esportivas, definir como "loja_oficial" por padrão
       setStoreType('loja_oficial');
     } else {
       setStoreType('loja_validada');
     }
     
-    // Resetar edição quando novos dados são carregados
     setIsEditing(false);
 
-    // Rolar para a seção de preview após o carregamento
     setTimeout(() => {
       if (mainCardRef.current) {
         const previewSection = mainCardRef.current.querySelector('.preview-section');
@@ -233,8 +199,8 @@ function App() {
     }, 300);
   };
   
+  // Função para alternar seções
   const toggleSection = (section, e) => {
-    // Prevenir propagação do evento para evitar que o clique chegue ao elemento pai
     if (e) {
       e.stopPropagation();
       e.preventDefault();
@@ -250,10 +216,10 @@ function App() {
       case 'image':
         setImageSectionOpen(!imageSectionOpen);
         break;
-      case 'batch': // NOVO
+      case 'batch':
         setBatchSectionOpen(!batchSectionOpen);
         break;
-      case 'aiImage': // NOVO
+      case 'aiImage':
         setAiImageSectionOpen(!aiImageSectionOpen);
         break;
       default:
@@ -261,7 +227,7 @@ function App() {
     }
   };
 
-  // Handler para cupom de desconto
+  // Handlers para cupom e desconto
   const handleCouponChange = (value) => {
     setCouponCode(value);
     if (value) {
@@ -269,33 +235,28 @@ function App() {
     }
   };
   
-  // Handler para porcentagem de desconto
   const handleDiscountChange = (value) => {
     setDiscountPercentage(value);
-    // Se preencheu porcentagem, limpa o valor de desconto em R$
     if (value) {
       setDiscountValue('');
       addToHistory(value, setRecentDiscounts, recentDiscounts);
     }
   };
   
-  // Handler para valor de desconto em R$
   const handleDiscountValueChange = (value) => {
     setDiscountValue(value);
-    // Se preencheu valor em R$, limpa a porcentagem
     if (value) {
       setDiscountPercentage('');
       addToHistory(value, setRecentDiscountValues, recentDiscountValues);
     }
   };
   
-  // Função para carregar imagem personalizada
+  // Upload de imagem
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Verificar tamanho e tipo do arquivo
-    if (file.size > 5 * 1024 * 1024) { // 5MB
+    if (file.size > 5 * 1024 * 1024) {
       setError('A imagem não pode ser maior que 5MB');
       return;
     }
@@ -306,10 +267,8 @@ function App() {
       return;
     }
     
-    // Guardar o objeto File para uso posterior com a Web Share API
     setImageFile(file);
     
-    // Upload da imagem para o servidor
     const formData = new FormData();
     formData.append('image', file);
     
@@ -335,7 +294,7 @@ function App() {
     }
   };
   
-  // NOVO: Handler para geração de título divertido com IA
+  // Geração de título com IA
   const handleGenerateTitle = async () => {
     if (!productData) {
       setError('Você precisa extrair os dados de um produto primeiro.');
@@ -346,7 +305,6 @@ function App() {
       setGeneratingTitle(true);
       setError('');
       
-      // Prompt chumbado e melhorado
       const enhancedPrompt = `Você é um especialista em criar títulos curtos, criativos e humorísticos para anúncios de produtos no WhatsApp.
 Crie um título totalmente em LETRAS MAIÚSCULAS, com no máximo 50 caracteres, que seja chamativo, divertido e que possa ter duplo sentido ou brincar com memes, gírias e trocadilhos.
 O produto é: ${productData.name}.
@@ -359,7 +317,6 @@ Regras importantes:
 - Pode usar expressões populares, memes e referências do mundo gamer ou tech.
 - Responda APENAS com o título, sem nenhum texto adicional.`;
       
-      // Chamada API para o Gemini Text
       const response = await axios.post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
         contents: [{ parts: [{ text: enhancedPrompt }] }],
         generationConfig: {
@@ -373,7 +330,6 @@ Regras importantes:
         }
       });
       
-      // Extrair o texto gerado 
       if (response.data && 
           response.data.candidates && 
           response.data.candidates[0] && 
@@ -383,24 +339,17 @@ Regras importantes:
         const generatedText = response.data.candidates[0].content.parts[0].text;
         console.log("Título gerado:", generatedText);
         
-        // Limpar e formatar o título (remover aspas, ajustar espaços)
         const cleanTitle = generatedText.replace(/^["'\s]+|["'\s]+$/g, '');
         
-        // Atualizar a mensagem final com o título
         setGeneratedTitle(cleanTitle);
         
-        // Atualizar a mensagem editável com o novo título
         if (messagePreviewRef.current && finalMessage) {
           let updatedMessage = finalMessage;
-          // Se já tiver um título em asteriscos ou itálico, substituir; caso contrário, adicionar no início
           if (updatedMessage.startsWith('_') && updatedMessage.includes('_\n')) {
-            // Substituir o título existente
             updatedMessage = updatedMessage.replace(/^_[^_\n]*_/, `_${cleanTitle}_`);
           } else if (updatedMessage.startsWith('*') && updatedMessage.includes('*\n')) {
-            // Substituir o título existente (em negrito)
             updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage.substring(updatedMessage.indexOf('\n\n') + 2);
           } else {
-            // Adicionar um novo título no início em itálico
             updatedMessage = `_${cleanTitle}_\n\n` + updatedMessage;
           }
           setFinalMessage(updatedMessage);
@@ -421,13 +370,13 @@ Regras importantes:
     }
   };
   
-  // Função para remover a imagem personalizada
+  // Remover imagem
   const removeCustomImage = () => {
     setCustomImage('');
     setImageFile(null);
   };
   
-  // Habilitar modo de edição para a mensagem
+  // Modo de edição
   const enableEditing = () => {
     if (!isEditing && messagePreviewRef.current) {
       setIsEditing(true);
@@ -436,24 +385,21 @@ Regras importantes:
     }
   };
   
-  // Desabilitar modo de edição para a mensagem
   const disableEditing = () => {
     if (isEditing && messagePreviewRef.current) {
       setIsEditing(false);
       messagePreviewRef.current.setAttribute('contenteditable', 'false');
-      // Atualizar a mensagem final com o conteúdo editado
       setFinalMessage(messagePreviewRef.current.innerText);
     }
   };
   
-  // NOVO: Processar links em lote
+  // Processamento em lote
   const processBatchLinks = async () => {
     if (!batchLinks.trim()) {
       setError('Insira pelo menos um link para processamento em lote');
       return;
     }
     
-    // Extrair links do texto (um por linha)
     const links = batchLinks.split('\n').filter(link => link.trim());
     
     if (links.length === 0) {
@@ -466,7 +412,6 @@ Regras importantes:
     setBatchProgress(0);
     setError('');
     
-    // Processar cada link sequencialmente
     const results = [];
     for (let i = 0; i < links.length; i++) {
       const link = links[i].trim();
@@ -476,7 +421,6 @@ Regras importantes:
         const response = await axios.post(`${API_BASE_URL}/api/scrape`, { url: link });
         
         if (response.data) {
-          // Gerar mensagem para este produto
           const productMessage = await generateMessageForProduct(response.data, link);
           
           results.push({
@@ -495,7 +439,6 @@ Regras importantes:
         });
       }
       
-      // Atualizar progresso
       setBatchProgress(Math.floor(((i + 1) / links.length) * 100));
     }
     
@@ -503,11 +446,10 @@ Regras importantes:
     setBatchProcessing(false);
   };
   
-  // NOVO: Gerar mensagem para um produto (sem alterar estado)
+  // Gerar mensagem para produto
   const generateMessageForProduct = async (productData, url) => {
     if (!productData) return '';
     
-    // Criar formatador para usar nas mensagens em lote
     const formatPrice = (price) => {
       if (!price) return '';
       let cleanPrice = String(price).replace(/[^\d,\.]/g, '');
@@ -523,7 +465,6 @@ Regras importantes:
       return cleanPrice;
     };
     
-    // Determinar tipo de loja para este produto
     let productStoreType = storeType;
     
     if (!productStoreType) {
@@ -542,7 +483,6 @@ Regras importantes:
       }
     }
     
-    // Gerar texto de tipo de loja
     const getStoreTypeText = (storeType, productData) => {
       if (!productData) return '';
       
@@ -570,7 +510,6 @@ Regras importantes:
         }
         
         if (productData.vendor && productData.vendor !== 'Mercado Livre') {
-          // Limpar nome do vendedor
           const cleanName = productData.vendor
             .replace(/^Vendido\s+por/i, '')
             .replace(/^Loja\s+oficial\s+/i, '')
@@ -604,22 +543,18 @@ Regras importantes:
       return '';
     };
     
-    // Verificar se é Amazon
     const isAmazon = productStoreType === 'amazon' || 
                     (productData.vendor === 'Amazon') ||
                     (productData.platform && 
                      productData.platform.toLowerCase().includes('amazon'));
     
-    // Preços formatados
     const rawCurrentPrice = productData.currentPrice;
     const rawOriginalPrice = productData.originalPrice;
     const processedCurrentPrice = productData.displayPrice || formatPrice(rawCurrentPrice);
     const processedOriginalPrice = productData.displayOriginalPrice || formatPrice(rawOriginalPrice);
     
-    // Mensagem de loja
     const storeTypeText = getStoreTypeText(productStoreType, productData);
     
-    // Verificar se há desconto real
     const hasRealDiscount = (originalPrice, currentPrice) => {
       if (!originalPrice || !currentPrice) return false;
       
@@ -631,17 +566,13 @@ Regras importantes:
              (originalValue - currentValue) / originalValue > 0.05;
     };
     
-    // Aplicar descontos se definidos
     let finalPrice = processedCurrentPrice;
     
-    // Gerar mensagem de preço
     let priceText = '';
     
-    // Para Amazon, mostrar apenas o preço atual
     if (isAmazon) {
       priceText = `✅  Por *R$ ${finalPrice}*`;
     } else {
-      // Para outras lojas
       if (processedOriginalPrice && hasRealDiscount(rawOriginalPrice, finalPrice)) {
         priceText = `✅  ~De R$ ${processedOriginalPrice}~ por *R$ ${finalPrice}*`;
       } else {
@@ -649,7 +580,6 @@ Regras importantes:
       }
     }
     
-    // Montar mensagem completa
     let message = `➡️ *${productData.name}*`;
     
     if (storeTypeText) {
@@ -658,12 +588,10 @@ Regras importantes:
     
     message += `\n\n${priceText}`;
     
-    // Adicionar cupom se fornecido
     if (couponCode) {
       message += `\n🎟️ Use o cupom: *${couponCode}*`;
     }
     
-    // Adicionar link do produto
     message += `\n🛒 ${productData.productUrl || url}`;
     
     message += `\n\n☑️ Link do grupo: https://linktr.ee/techdealsbr`;
@@ -671,7 +599,7 @@ Regras importantes:
     return message;
   };
   
-  // NOVO: Copiar todas as mensagens em lote
+  // Copiar mensagens em lote
   const copyAllBatchMessages = () => {
     if (batchResults.length === 0) {
       setError('Não há mensagens em lote para copiar');
@@ -701,7 +629,7 @@ Regras importantes:
       });
   };
   
-  // Função para renderizar um campo de texto com botão de limpar e datalist
+  // Renderizar input com clear
   const renderInputWithClear = (value, setValue, placeholder, type = 'text', listId = null, historyItems = []) => {
     return (
       <div className="input-clear-wrapper">
@@ -733,74 +661,59 @@ Regras importantes:
     );
   };
   
-  // Compartilhar mensagem e imagem no WhatsApp usando Web Share API
+  // Compartilhar WhatsApp
   const shareWhatsApp = async () => {
     if (!finalMessage) {
       setError('Nenhuma mensagem para compartilhar.');
       return;
     }
     
-    // Se estamos em modo de edição, desabilite primeiro para garantir que o conteúdo foi salvo
     if (isEditing) {
       disableEditing();
     }
 
-    // Obter a mensagem atual (possivelmente editada)
-
     const messageToShare = messagePreviewRef.current ? messagePreviewRef.current.innerText : finalMessage;
    
-   // Tentar usar Web Share API se estiver disponível (para texto ou para arquivos)
    if (navigator.share) {
      try {
-       // Se tiver imagem, tenta compartilhar com ela
        if (imageFile && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
          await navigator.share({
            text: messageToShare,
            files: [imageFile]
          });
        } else {
-         // Caso contrário, compartilha apenas o texto
          await navigator.share({
            text: messageToShare
          });
        }
-       return; // Se compartilhou com sucesso, encerra a função
+       return;
      } catch (err) {
        console.warn('Compartilhamento falhou:', err);
-       // Continua para o fallback abaixo
      }
    }
    
-   // Fallback para métodos tradicionais se Web Share API não estiver disponível ou falhar
-   // Verificar se é dispositivo móvel
    const isMobile = /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent);
    
    if (isMobile) {
-     // Em dispositivos móveis, tentar abrir diretamente o app
      const encodedMessage = encodeURIComponent(messageToShare);
      window.location.href = `whatsapp://send?text=${encodedMessage}`;
      
-     // Como fallback, se após 1 segundo o usuário ainda estiver na página,
-     // redirecionar para o wa.me que funciona melhor em iOS
      setTimeout(() => {
        if (document.hasFocus()) {
          window.location.href = `https://api.whatsapp.com/send?text=${encodedMessage}`;
        }
      }, 1000);
    } else {
-     // Em desktop, abrir o WhatsApp Web
      window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(messageToShare)}`, '_blank');
    }
  };
    
-   // Copiar mensagem para o clipboard
+   // Copiar mensagem
    const copyMessage = () => {
-     // Se estamos em modo de edição, desabilite primeiro para garantir que o conteúdo foi salvo
      if (isEditing) {
        disableEditing();
      }
 
-     // Obter a mensagem atual (possivelmente editada)
      const messageToShare = messagePreviewRef.current ? messagePreviewRef.current.innerText : finalMessage;
      
      if (!messageToShare) {
@@ -821,10 +734,9 @@ Regras importantes:
        });
    };
 
-   // Função para extrair dados do produto
+   // Extrair dados
    const handleExtract = async () => {
-     const inputEl = document.querySelector('input[type="url"]');
-     if (!inputEl || !inputEl.value) {
+     if (!url) {
        setError('Por favor, insira um link de afiliado.');
        return;
      }
@@ -833,13 +745,11 @@ Regras importantes:
        setLoading(true);
        setError('');
        
-       // URL correta do backend no Render
        const response = await axios.post(`${API_BASE_URL}/api/scrape`, { 
-         url: inputEl.value 
+         url: url 
        });
        
-       // Passar os dados do produto e a URL usada para processamento
-       handleProductDataReceived(response.data, inputEl.value);
+       handleProductDataReceived(response.data, url);
      } catch (error) {
        console.error('Erro ao obter dados do produto:', error);
        setError(
@@ -852,557 +762,542 @@ Regras importantes:
    };
    
    return (
-     <div>
-       <header className="app-header">
-         <div className="header-content">
-           <h1 className="app-title">Deals Generator</h1>
-           <span className="app-version">v2.7</span>
+     <div className="app-container">
+       {/* Main Content */}
+       <main className="main-content" ref={mainCardRef}>
+         <div className="main-header">
+           <div className="logo-main">DG</div>
+           <h1 className="main-title">Deals Generator</h1>
+           <p className="main-subtitle">⚡ Seu gerador de copy para afiliados: mensagens prontas em segundos!</p>
          </div>
-       </header>
-       
-       <div className="container">
-         <div className="forms-column">
-           <div className="main-card" ref={mainCardRef}>
-             <div className="card-header">
-               <h2 className="card-title">Gerador de Mensagens Promocionais</h2>
-               <p className="card-subtitle">Crie mensagens atrativas para compartilhar promoções no WhatsApp</p>
-             </div>
-             
-             {/* Seção de Informações da Promoção */}
-             <div className="section-header" onClick={() => toggleSection('info')}>
-               <div className="section-title">
-                 <i className="fas fa-link"></i>
-                 Informações da Promoção
-               </div>
-               <div className="chevron-container" onClick={(e) => toggleSection('info', e)}>
-                 <i className={`fas fa-chevron-down chevron-icon ${infoSectionOpen ? 'open' : ''}`}></i>
-               </div>
-             </div>
-             
-             {infoSectionOpen && (
-               <div className="section-content">
-                 <div className="form-group">
-                   <label className="form-label">Link da promoção</label>
-                   <div className="input-clear-wrapper">
-                     <input
-                       type="url"
-                       className="form-input"
-                       value={url}
-                       onChange={(e) => setUrl(e.target.value)}
-                       placeholder="Cole o link da Amazon ou Mercado Livre"
-                       list="url-history"
-                     />
-                     {recentLinks && recentLinks.length > 0 && (
-                       <datalist id="url-history">
-                         {recentLinks.map((link, index) => (
-                           <option key={index} value={link} />
-                         ))}
-                       </datalist>
-                     )}
-                     {url && (
-                       <button 
-                         className="clear-input-btn" 
-                         onClick={() => setUrl('')}
-                         type="button"
-                       >
-                         <i className="fas fa-times"></i>
-                       </button>
-                     )}
-                   </div>
-                 </div>
-                 
-                 <div className="form-group">
-                   <label className="form-label">Cupom de desconto <span className="optional-tag">Opcional</span></label>
-                   {renderInputWithClear(
-                     couponCode, 
-                     handleCouponChange, 
-                     "Insira um cupom de desconto", 
-                     "text", 
-                     "coupon-history", 
-                     recentCoupons
-                   )}
-                 </div>
-                 
-                 <div className="discount-fields-grid">
-                   <div className="form-group">
-                     <label className="form-label">
-                       <i className="fas fa-percent"></i> Desconto % <span className="optional-tag">Opcional</span>
-                     </label>
-                     {renderInputWithClear(
-                       discountPercentage, 
-                       handleDiscountChange, 
-                       "Ex: 20 (sem o símbolo %)", 
-                       "number", 
-                       "discount-history", 
-                       recentDiscounts
-                     )}
-                   </div>
-                   
-                   <div className="form-group">
-                     <label className="form-label">
-                       <i className="fas fa-dollar-sign"></i> Desconto em R$ <span className="optional-tag">Opcional</span>
-                     </label>
-                     {renderInputWithClear(
-                       discountValue, 
-                       handleDiscountValueChange, 
-                       "Ex: 50", 
-                       "number", 
-                       "discount-value-history", 
-                       recentDiscountValues
-                     )}
-                   </div>
-                 </div>
-                 
-                 {(discountPercentage && discountValue) && (
-                   <div className="discount-warning">
-                     <i className="fas fa-exclamation-triangle"></i> Atenção: Use apenas um tipo de desconto por vez.
-                   </div>
-                 )}
-               </div>
-             )}
-             
-             {/* Seção de Tipo de Loja */}
-             <div className="section-header" onClick={() => toggleSection('store')}>
-               <div className="section-title">
-                 <i className="fas fa-store"></i>
-                 Tipo de Loja
-               </div>
-               <div className="chevron-container" onClick={(e) => toggleSection('store', e)}>
-                 <i className={`fas fa-chevron-down chevron-icon ${storeSectionOpen ? 'open' : ''}`}></i>
-               </div>
-             </div>
 
-             {storeSectionOpen && (
-               <div className="section-content">
-                 <div className="store-type-group">
-                   <button 
-                     type="button"
-                     className={`store-type-btn ${storeType === 'amazon' ? 'active' : ''}`}
-                     onClick={() => {
-                       setStoreType('amazon');
-                       console.log("Botão Amazon clicado, storeType =", 'amazon');
-                     }}
-                   >
-                     <i className="fab fa-amazon"></i> Amazon
-                   </button>
-                   <button 
-                     type="button"
-                     className={`store-type-btn ${storeType === 'loja_oficial' ? 'active' : ''}`}
-                     onClick={() => {
-                       setStoreType('loja_oficial');
-                       console.log("Botão Loja Oficial clicado, storeType =", 'loja_oficial');
-                     }}
-                   >
-                     <i className="fas fa-check-circle"></i> Loja Oficial
-                   </button>
-                   <button 
-                     type="button"
-                     className={`store-type-btn ${storeType === 'catalogo' ? 'active' : ''}`}
-                     onClick={() => {
-                       setStoreType('catalogo');
-                       console.log("Botão Catálogo clicado, storeType =", 'catalogo');
-                     }}
-                   >
-                     <i className="fas fa-list"></i> Catálogo
-                   </button>
-                   <button 
-                     type="button"
-                     className={`store-type-btn ${storeType === 'loja_validada' ? 'active' : ''}`}
-                     onClick={() => {
-                       setStoreType('loja_validada');
-                       console.log("Botão Loja validada clicado, storeType =", 'loja_validada');
-                     }}
-                   >
-                     <i className="fas fa-shield-alt"></i> Loja validada
-                   </button>
-                   <button 
-                     type="button"
-                     className={`store-type-btn ${storeType === '' ? 'active' : ''}`}
-                     onClick={() => {
-                       setStoreType('');
-                       console.log("Botão Nenhum clicado, storeType =", '');
-                     }}
-                   >
-                     <i className="fas fa-times"></i> Nenhum
-                   </button>
-                 </div>
-                 
-                 {storeType === 'catalogo' && (
-                   <div className="form-group" style={{ marginTop: '16px' }}>
-                     <label className="form-label">Nome do Vendedor:</label>
-                     {renderInputWithClear(vendorName, setVendorName, "Insira o nome do vendedor")}
-                   </div>
-                 )}
-               </div>
-             )}
-             
-             {/* Nova Seção: Imagem Personalizada */}
-             <div className="section-header" onClick={() => toggleSection('image')}>
-               <div className="section-title">
-                 <i className="fas fa-image"></i>
-                 Imagem Personalizada
-                 <span className="optional-tag">Opcional</span>
-               </div>
-               <div className="chevron-container" onClick={(e) => toggleSection('image', e)}>
-                 <i className={`fas fa-chevron-down chevron-icon ${imageSectionOpen ? 'open' : ''}`}></i>
-               </div>
-             </div>
-             
-             {imageSectionOpen && (
-               <div className="section-content">
-                 <div className="form-group">
-                   <label className="form-label">Upload de imagem</label>
-                   <p className="form-description">
-                     Carregue uma imagem personalizada para sua promoção. 
-                     Se não for fornecida, será usada a imagem do produto.
-                   </p>
-                   <div className="web-share-info">
-                     <p className="web-share-info-text">
-                       <i className="fas fa-info-circle"></i> Em dispositivos móveis compatíveis, a imagem será anexada junto com a mensagem.
-                     </p>
-                   </div>
-                   
-                   <div className="file-upload-container">
-                     <input 
-                       type="file" 
-                       accept="image/jpeg,image/png,image/gif,image/jpg" 
-                       onChange={handleImageUpload}
-                       id="image-upload"
-                       className="file-input"
-                       disabled={uploadingImage}
-                     />
-                   </div>
-                   
-                   {uploadingImage && (
-                     <div className="upload-status">
-                       <div className="loading"></div>
-                       <span>Enviando imagem...</span>
-                     </div>
-                   )}
-                   
-                   {customImage && (
-                     <div className="custom-image-preview">
-                       <img src={customImage} alt="Imagem personalizada" className="uploaded-image" />
-                       <button onClick={removeCustomImage} className="btn-sm btn-danger">
-                         <i className="fas fa-trash-alt"></i> Remover
-                       </button>
-                     </div>
-                   )}
-                 </div>
-               </div>
-             )}
-             
-             {/* Nova Seção: Criar Título Divertido */}
-             <div className="section-header" onClick={() => toggleSection('aiImage')}>
-               <div className="section-title">
-                 <i className="fas fa-robot"></i>
-                 Criar Título Com IA
-                 <span className="optional-tag">Opcional</span>
-               </div>
-               <div className="chevron-container" onClick={(e) => toggleSection('aiImage', e)}>
-                 <i className={`fas fa-chevron-down chevron-icon ${aiImageSectionOpen ? 'open' : ''}`}></i>
-               </div>
-             </div>
-             
-             {aiImageSectionOpen && (
-               <div className="section-content">
-                 <div className="form-group">
-                   <label className="form-label">Geração Automática de Título</label>
-                   <p className="form-description">
-                     Clique no botão abaixo para gerar automaticamente um título criativo e divertido para seu produto usando IA.
-                   </p>
-                   
-                   <button 
-                     className="btn btn-ai"
-                     style={{ width: '100%' }}
-                     onClick={handleGenerateTitle}
-                     disabled={generatingTitle || !productData}
-                   >
-                     {generatingTitle ? (
-                       <>
-                         <div className="loading"></div>
-                         Gerando título...
-                       </>
-                     ) : (
-                       <>
-                         <i className="fas fa-lightbulb"></i>
-                         Gerar Título Criativo
-                       </>
-                     )}
-                   </button>
-                   
-                   {generatedTitle && (
-                     <div style={{ 
-                       marginTop: '15px', 
-                       padding: '12px 16px', 
-                       background: 'rgba(16, 185, 129, 0.1)', 
-                       borderRadius: '8px',
-                       border: '1px solid rgba(16, 185, 129, 0.2)'
-                     }}>
-                       <p style={{ 
-                         fontWeight: '600', 
-                         marginBottom: '6px', 
-                         color: 'var(--text-secondary)',
-                         fontSize: '13px'
-                       }}>Título gerado:</p>
-                       <p style={{ 
-                         fontFamily: 'JetBrains Mono, monospace', 
-                         fontStyle: 'italic',
-                         fontSize: '14px',
-                         fontWeight: '600',
-                         background: 'rgba(0,0,0,0.1)',
-                         padding: '8px 12px',
-                         borderRadius: '6px',
-                         color: 'var(--text-primary)'
-                       }}>{generatedTitle}</p>
-                     </div>
-                   )}
-                   
-                   <div className="web-share-info" style={{ marginTop: '15px' }}>
-                     <p className="web-share-info-text">
-                       <i className="fas fa-lightbulb"></i> 
-                       O título será adicionado automaticamente no início da sua mensagem. Você pode editar manualmente depois se quiser.
-                     </p>
-                   </div>
-                 </div>
-               </div>
-             )}
-
-             {/* NOVA SEÇÃO: Processamento em Lote */}
-             <div className="section-header" onClick={() => toggleSection('batch')}>
-               <div className="section-title">
-                 <i className="fas fa-tasks"></i>
-                 Gerar Mensagens em Lote
-                 <span className="optional-tag">Opcional</span>
-               </div>
-               <div className="chevron-container" onClick={(e) => toggleSection('batch', e)}>
-                 <i className={`fas fa-chevron-down chevron-icon ${batchSectionOpen ? 'open' : ''}`}></i>
-               </div>
-             </div>
-             
-             {batchSectionOpen && (
-               <div className="section-content">
-                 <div className="form-group">
-                   <label className="form-label">Links para Processamento</label>
-                   <p className="form-description">
-                     Cole vários links para processar de uma vez (um por linha).
-                   </p>
-                   
-                   <textarea 
-                     className="form-input" 
-                     style={{ minHeight: "120px" }}
-                     value={batchLinks}
-                     onChange={(e) => setBatchLinks(e.target.value)}
-                     placeholder="Cole um Link por linha&#10;Exemplo:&#10;https://amzn.to/3Zjf9kk&#10;https://mercadolivre.com/sec/2x3yNSP"
-                     disabled={batchProcessing}
-                   />
-                   
-                   <button 
-                     className="btn"
-                     style={{ marginTop: "12px", width: "100%" }}
-                     onClick={processBatchLinks}
-                     disabled={batchProcessing}
-                   >
-                     {batchProcessing ? (
-                       <>
-                         <div className="loading"></div>
-                         Processando... {batchProgress}%
-                       </>
-                     ) : (
-                       <>
-                         <i className="fas fa-play"></i> Processar Links em Lote
-                       </>
-                     )}
-                   </button>
-                   
-                   {batchResults.length > 0 && (
-                     <div className="batch-results" style={{ marginTop: "20px" }}>
-                       <div className="batch-results-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                         <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Resultados ({batchResults.filter(r => r.success).length}/{batchResults.length})</h3>
-                         <button 
-                           className="btn-sm" 
-                           onClick={copyAllBatchMessages}
-                           disabled={batchResults.filter(r => r.success).length === 0}
-                         >
-                           <i className="fas fa-copy"></i> Copiar Todas
-                         </button>
-                       </div>
-                       
-                       <div className="batch-results-list" style={{ 
-                         maxHeight: "300px", 
-                         overflowY: "auto", 
-                         border: "1px solid var(--border)",
-                         borderRadius: "8px",
-                         background: "rgba(15, 23, 42, 0.6)"
-                       }}>
-                         {batchResults.map((result, index) => (
-                           <div 
-                             key={index} 
-                             className="batch-result-item" 
-                             style={{ 
-                               padding: "12px", 
-                               borderBottom: index < batchResults.length - 1 ? "1px solid var(--border)" : "none",
-                               background: result.success ? "rgba(16, 185, 129, 0.05)" : "rgba(239, 68, 68, 0.05)"
-                             }}
-                           >
-                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                               <div style={{ fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%", fontSize: '12px' }}>
-                                 {result.url}
-                               </div>
-                               <div>
-                                 {result.success ? (
-                                   <span style={{ color: "var(--neon-green)", fontSize: '11px', fontWeight: '500' }}>
-                                     <i className="fas fa-check-circle"></i> Sucesso
-                                   </span>
-                                 ) : (
-                                   <span style={{ color: "var(--accent-error)", fontSize: '11px', fontWeight: '500' }}>
-                                     <i className="fas fa-exclamation-circle"></i> Falha
-                                   </span>
-                                 )}
-                               </div>
-                             </div>
-                             
-                             {result.success ? (
-                               <>
-                                 <div style={{ fontSize: "12px", marginBottom: "8px", color: 'var(--text-secondary)' }}>
-                                   {result.data.name}
-                                 </div>
-                                 <div style={{ display: "flex", gap: "6px" }}>
-                                   <button 
-                                     className="btn-sm"
-                                     onClick={() => {
-                                       navigator.clipboard.writeText(result.message);
-                                     }}
-                                   >
-                                     <i className="fas fa-copy"></i> Copiar
-                                   </button>
-                                   <button 
-                                     className="btn-sm"
-                                     onClick={() => {
-                                       handleProductDataReceived(result.data, result.url);
-                                     }}
-                                   >
-                                     <i className="fas fa-edit"></i> Editar
-                                   </button>
-                                 </div>
-                               </>
-                             ) : (
-                               <div style={{ color: "var(--accent-error)", fontSize: "12px" }}>
-                                 {result.error}
-                               </div>
-                             )}
-                           </div>
-                         ))}
-                       </div>
-                     </div>
-                   )}
-                 </div>
-               </div>
-             )}
-
-             {/* Botão Extrair Dados */}
-             <div className="extract-section">
-               <button
-                 className="btn-extract"
-                 onClick={handleExtract}
-                 disabled={loading}
-               >
-                 {loading ? (
-                   <>
-                     <div className="loading"></div>
-                     Extraindo dados...
-                   </>
-                 ) : (
-                   <>
-                     <i className="fas fa-search"></i>
-                     EXTRAIR DADOS
-                   </>
-                 )}
-               </button>
-               {error && <div className="error-message">{error}</div>}
-             </div>
-             
-             {loading && (
-               <div className="section-content" style={{ textAlign: 'center' }}>
-                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-                   <div className="loading"></div>
-                   <span>Carregando informações do produto...</span>
-                 </div>
-               </div>
-             )}
+         {/* Seção Informações da Promoção */}
+         <div className="form-section">
+           <div className={`section-header ${!infoSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('info')}>
+             <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+             </svg>
+             <span className="section-title">Informações da Promoção</span>
+             <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+             </svg>
            </div>
-         </div>
-
-         {/* Preview Column - só aparece quando há dados do produto */}
-         {productData && (
-           <div className="preview-column">
-             <div className="preview-card">
-               <div className="preview-title">Preview da Mensagem</div>
-               
-               {/* Imagem da Prévia */}
-               {(customImage || (productData && productData.imageUrl)) && (
-                 <div className="preview-image-container">
-                   <img 
-                     src={customImage || productData.imageUrl} 
-                     alt={productData.name || 'Imagem da promoção'} 
-                     className="preview-image"
-                   />
-                 </div>
-               )}
-               
-               {/* Mensagem editável */}
-               <div 
-                 ref={messagePreviewRef}
-                 className={`message-preview ${isEditing ? 'editing' : ''}`}
-                 onClick={enableEditing}
-                 onBlur={disableEditing}
-                 contentEditable={isEditing}
-                 suppressContentEditableWarning={true}
-               >
-                 <MessagePreview 
-                   productData={productData}
-                   couponCode={couponCode}
-                   storeType={storeType}
-                   vendorName={vendorName}
-                   discountPercentage={discountPercentage}
-                   discountValue={discountValue}
-                   setFinalMessage={setFinalMessage}
+           
+           <div className={`section-content ${!infoSectionOpen ? 'collapsed' : ''}`}>
+             <div className="form-group">
+               <label className="form-label">Link de Afiliado</label>
+               <div className="input-clear-wrapper">
+                 <input
+                   type="url"
+                   className="form-input"
+                   value={url}
+                   onChange={(e) => setUrl(e.target.value)}
+                   placeholder="https://mercadolivre.com/sec/ZXorKJ3"
+                   list="url-history"
                  />
+                 {recentLinks && recentLinks.length > 0 && (
+                   <datalist id="url-history">
+                     {recentLinks.map((link, index) => (
+                       <option key={index} value={link} />
+                     ))}
+                   </datalist>
+                 )}
+                 {url && (
+                   <button 
+                     className="clear-input-btn" 
+                     onClick={() => setUrl('')}
+                     type="button"
+                   >
+                     <i className="fas fa-times"></i>
+                   </button>
+                 )}
                </div>
-               
-               {/* Texto de instrução para editar */}
-               <div className="edit-instructions">
-                 <i className="fas fa-edit"></i> Clique na mensagem para editar
+             </div>
+
+             <div className="form-group">
+               <label className="form-label">Cupom de Desconto <span className="feature-tag">OPCIONAL</span></label>
+               {renderInputWithClear(
+                 couponCode, 
+                 handleCouponChange, 
+                 "Insira um cupom de desconto", 
+                 "text", 
+                 "coupon-history", 
+                 recentCoupons
+               )}
+             </div>
+
+             <div className="discount-grid">
+               <div className="form-group">
+                 <label className="form-label">% Desconto</label>
+                 {renderInputWithClear(
+                   discountPercentage, 
+                   handleDiscountChange, 
+                   "Ex: 20 (sem o símbolo %)", 
+                   "number", 
+                   "discount-history", 
+                   recentDiscounts
+                 )}
                </div>
-               
-               <div className="preview-actions">
-                 <button 
-                   id="copyButton"
-                   className={`btn-copy ${copySuccess ? 'success-animation' : ''}`}
-                   onClick={copyMessage}
-                 >
-                   <i className={`${copySuccess ? 'fas fa-check' : 'fas fa-copy'}`}></i>
-                   {copySuccess ? 'Copiado!' : 'COPIAR'}
-                 </button>
-                 
-                 <button 
-                   className="btn-whatsapp"
-                   onClick={shareWhatsApp}
-                 >
-                   <i className="fab fa-whatsapp"></i>
-                   WHATSAPP
-                 </button>
+               <div className="form-group">
+                 <label className="form-label">$ Desconto em R$</label>
+                 {renderInputWithClear(
+                   discountValue, 
+                   handleDiscountValueChange, 
+                   "Ex: 50", 
+                   "number", 
+                   "discount-value-history", 
+                   recentDiscountValues
+                 )}
                </div>
              </div>
            </div>
-         )}
-       </div>
-       
-       <div className="watermark">
-         Deals Generator &copy; 2025 - Todos os direitos reservados
-       </div>
-     </div>
-   );
- }
+         </div>
 
- export default App;
+         {/* Seção Tipo de Loja */}
+         <div className="form-section">
+           <div className={`section-header ${!storeSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('store')}>
+             <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
+             </svg>
+             <span className="section-title">Tipo de Loja</span>
+             <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+             </svg>
+           </div>
+
+           <div className={`section-content ${!storeSectionOpen ? 'collapsed' : ''}`}>
+             <div className="store-types">
+               <div 
+                 className={`store-type ${storeType === 'amazon' ? 'active' : ''}`}
+                 onClick={() => setStoreType('amazon')}
+               >
+                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M12 2L2 7v10c0 5.55 3.84 10 9 11 5.16-1 9-5.45 9-11V7l-10-5z"/>
+                 </svg>
+                 Amazon
+               </div>
+               <div 
+                 className={`store-type ${storeType === 'loja_oficial' ? 'active' : ''}`}
+                 onClick={() => setStoreType('loja_oficial')}
+               >
+                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                 </svg>
+                 Loja Oficial
+               </div>
+               <div 
+                 className={`store-type ${storeType === 'catalogo' ? 'active' : ''}`}
+                 onClick={() => setStoreType('catalogo')}
+               >
+                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                 </svg>
+                 Catálogo
+               </div>
+               <div 
+                 className={`store-type ${storeType === 'loja_validada' ? 'active' : ''}`}
+                 onClick={() => setStoreType('loja_validada')}
+               >
+                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v12z"/>
+                 </svg>
+                 Loja Validada
+               </div>
+               <div 
+                 className={`store-type ${storeType === '' ? 'active' : ''}`}
+                 onClick={() => setStoreType('')}
+               >
+                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                 </svg>
+                 Nenhum
+               </div>
+             </div>
+             
+             {storeType === 'catalogo' && (
+               <div className="form-group" style={{ marginTop: '16px' }}>
+                 <label className="form-label">Nome do Vendedor:</label>
+                 {renderInputWithClear(vendorName, setVendorName, "Insira o nome do vendedor")}
+               </div>
+             )}
+           </div>
+         </div>
+
+         {/* Seção Imagem Alternativa */}
+         <div className="form-section">
+           <div className={`section-header ${!imageSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('image')}>
+             <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            <span className="section-title">Imagem Alternativa</span>
+            <span className="feature-tag">OPCIONAL</span>
+            <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </div>
+        
+        <div className={`section-content ${!imageSectionOpen ? 'collapsed' : ''}`}>
+            <div className="form-group">
+                <label className="form-label">Upload de Imagem</label>
+                <p className="form-description">
+                    Carregue uma imagem personalizada para sua promoção. Se não for fornecida, será usada a imagem do produto.
+                </p>
+                
+                <div className="upload-zone" onClick={() => document.getElementById('image-upload').click()}>
+                    <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p style={{color: 'var(--text-primary)', fontWeight: '500', marginBottom: '0.25rem'}}>Clique para carregar ou arraste uma imagem</p>
+                    <span style={{fontSize: '12px', color: 'var(--text-muted)'}}>PNG, JPG até 5MB</span>
+                </div>
+                
+                <input 
+                    type="file" 
+                    accept="image/jpeg,image/png,image/gif,image/jpg" 
+                    onChange={handleImageUpload}
+                    id="image-upload"
+                    style={{display: 'none'}}
+                    disabled={uploadingImage}
+                />
+                
+                {uploadingImage && (
+                    <div style={{display: 'flex', alignItems: 'center', marginTop: '12px', fontSize: '12px'}}>
+                        <div className="loading"></div>
+                        <span>Enviando imagem...</span>
+                    </div>
+                )}
+                
+                {customImage && (
+                    <div className="custom-image-preview">
+                        <img src={customImage} alt="Imagem personalizada" className="uploaded-image" />
+                        <button onClick={removeCustomImage} className="btn-secondary" style={{background: '#EF4444', fontSize: '12px', padding: '8px 12px'}}>
+                            <i className="fas fa-trash-alt"></i> Remover
+                        </button>
+                    </div>
+                )}
+                
+                <div className="info-alert">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    Em dispositivos móveis compatíveis, a imagem será anexada junto com a mensagem.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {/* Seção Geração de Título (IA) */}
+    <div className="form-section">
+        <div className={`section-header ${!aiImageSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('aiImage')}>
+            <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+            </svg>
+            <span className="section-title">Geração de Título (IA)</span>
+            <span className="feature-tag">OPCIONAL</span>
+            <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </div>
+        
+        <div className={`section-content ${!aiImageSectionOpen ? 'collapsed' : ''}`}>
+            <div className="form-group">
+                <label className="form-label">Geração Automática de Título</label>
+                <p className="form-description">
+                    Clique no botão abaixo para gerar automaticamente um título criativo e divertido para seu produto usando IA.
+                </p>
+                
+                <button 
+                    className="btn-secondary"
+                    onClick={handleGenerateTitle}
+                    disabled={generatingTitle || !productData}
+                >
+                    {generatingTitle ? (
+                        <>
+                            <div className="loading"></div>
+                            Gerando...
+                        </>
+                    ) : (
+                        <>
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                            Gerar Título Criativo
+                        </>
+                    )}
+                </button>
+                
+                {generatedTitle && (
+                    <div style={{ 
+                        marginTop: '15px', 
+                        padding: '12px 16px', 
+                        background: 'rgba(16, 185, 129, 0.1)', 
+                        borderRadius: '8px',
+                        border: '1px solid rgba(16, 185, 129, 0.2)'
+                    }}>
+                        <p style={{ 
+                            fontWeight: '600', 
+                            marginBottom: '6px', 
+                            color: 'var(--text-secondary)',
+                            fontSize: '13px'
+                        }}>Título gerado:</p>
+                        <p style={{ 
+                            fontFamily: 'JetBrains Mono, monospace', 
+                            fontStyle: 'italic',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            background: 'rgba(0,0,0,0.1)',
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            color: 'var(--text-primary)'
+                        }}>{generatedTitle}</p>
+                    </div>
+                )}
+                
+                <div className="info-alert">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    O título será adicionado automaticamente no início da sua mensagem. Você pode editar manualmente depois se quiser.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {/* Seção Gerar Mensagens em Lote */}
+    <div className="form-section">
+        <div className={`section-header ${!batchSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('batch')}>
+            <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+            </svg>
+            <span className="section-title">Gerar Mensagens em Lote</span>
+            <span className="feature-tag">OPCIONAL</span>
+            <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </div>
+        
+        <div className={`section-content ${!batchSectionOpen ? 'collapsed' : ''}`}>
+            <div className="form-group">
+                <label className="form-label">Links para Processamento</label>
+                <p className="form-description">
+                    Cole vários links para processar de uma vez (um por linha).
+                </p>
+                
+                <textarea 
+                    className="form-textarea" 
+                    value={batchLinks}
+                    onChange={(e) => setBatchLinks(e.target.value)}
+                    placeholder={`Cole um link por linha
+Exemplo:
+https://amzn.to/3Zjf9kK
+https://mercadolivre.com/sec/2x3yN5P`}
+                    disabled={batchProcessing}
+                />
+                
+                <button 
+                    className="btn-tertiary"
+                    onClick={processBatchLinks}
+                    disabled={batchProcessing}
+                >
+                    {batchProcessing ? (
+                        <>
+                            <div className="loading"></div>
+                            Processando... {batchProgress}%
+                        </>
+                    ) : (
+                        <>
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Processar Links em Lote
+                        </>
+                    )}
+                </button>
+                
+                {batchResults.length > 0 && (
+                    <div className="batch-results" style={{ marginTop: "20px" }}>
+                        <div className="batch-results-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>Resultados ({batchResults.filter(r => r.success).length}/{batchResults.length})</h3>
+                            <button 
+                                className="btn-secondary" 
+                                style={{fontSize: '12px', padding: '8px 12px'}}
+                                onClick={copyAllBatchMessages}
+                                disabled={batchResults.filter(r => r.success).length === 0}
+                            >
+                                <i className="fas fa-copy"></i> Copiar Todas
+                            </button>
+                        </div>
+                        
+                        <div className="batch-results-list" style={{ 
+                            maxHeight: "300px", 
+                            overflowY: "auto", 
+                            border: "1px solid var(--border-subtle)",
+                            borderRadius: "8px",
+                            background: "rgba(26, 26, 26, 0.6)"
+                        }}>
+                            {batchResults.map((result, index) => (
+                                <div 
+                                    key={index} 
+                                    className="batch-result-item" 
+                                    style={{ 
+                                        padding: "12px", 
+                                        borderBottom: index < batchResults.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                                        background: result.success ? "rgba(16, 185, 129, 0.05)" : "rgba(239, 68, 68, 0.05)"
+                                    }}
+                                >
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                                        <div style={{ fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%", fontSize: '12px' }}>
+                                            {result.url}
+                                        </div>
+                                        <div>
+                                            {result.success ? (
+                                                <span style={{ color: "var(--accent-success)", fontSize: '11px', fontWeight: '500' }}>
+                                                    <i className="fas fa-check-circle"></i> Sucesso
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: "#EF4444", fontSize: '11px', fontWeight: '500' }}>
+                                                    <i className="fas fa-exclamation-circle"></i> Falha
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    {result.success ? (
+                                        <>
+                                            <div style={{ fontSize: "12px", marginBottom: "8px", color: 'var(--text-secondary)' }}>
+                                                {result.data.name}
+                                            </div>
+                                            <div style={{ display: "flex", gap: "6px" }}>
+                                                <button 
+                                                    className="btn-secondary"
+                                                    style={{fontSize: '10px', padding: '4px 8px'}}
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(result.message);
+                                                    }}
+                                                >
+                                                    <i className="fas fa-copy"></i> Copiar
+                                                </button>
+                                                <button 
+                                                    className="btn-secondary"
+                                                    style={{fontSize: '10px', padding: '4px 8px'}}
+                                                    onClick={() => {
+                                                        handleProductDataReceived(result.data, result.url);
+                                                    }}
+                                                >
+                                                    <i className="fas fa-edit"></i> Editar
+                                                </button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div style={{ color: "#EF4444", fontSize: "12px" }}>
+                                            {result.error}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    </div>
+
+    {/* Botão Extrair Dados */}
+    <button
+        className="btn-primary"
+        onClick={handleExtract}
+        disabled={loading}
+    >
+        {loading ? (
+            <>
+                <div className="loading"></div>
+                EXTRAINDO DADOS...
+            </>
+        ) : (
+            <>
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                EXTRAIR DADOS
+            </>
+        )}
+    </button>
+    
+    {error && <div className="error-message">{error}</div>}
+</main>
+
+{/* Preview Panel */}
+{productData && (
+    <aside className="preview-panel">
+        <div className="preview-header">
+            <h3 className="preview-title">Preview da Mensagem</h3>
+        </div>
+
+        <div className="phone-mockup">
+            <div className="phone-screen">
+                <div className="whatsapp-header">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413"/>
+                    </svg>
+                    WhatsApp Business
+                </div>
+                <div 
+                    ref={messagePreviewRef}
+                    className={`message-bubble ${isEditing ? 'editing' : ''}`}
+                    onClick={enableEditing}
+                    onBlur={disableEditing}
+                    contentEditable={isEditing}
+                    suppressContentEditableWarning={true}
+                >
+                    <MessagePreview 
+                        productData={productData}
+                        couponCode={couponCode}
+                        storeType={storeType}
+                        vendorName={vendorName}
+                        discountPercentage={discountPercentage}
+                        discountValue={discountValue}
+                        setFinalMessage={setFinalMessage}
+                    />
+                </div>
+            </div>
+        </div>
+
+        {(customImage || (productData && productData.imageUrl)) && (
+            <div className="preview-image-container" style={{textAlign: 'center', marginBottom: '1.5rem'}}>
+                <img 
+                    src={customImage || productData.imageUrl} 
+                    alt={productData.name || 'Imagem da promoção'} 
+                    style={{maxWidth: '100%', maxHeight: '180px', borderRadius: '8px', objectFit: 'contain'}}
+                />
+            </div>
+        )}
+
+        {/* REMOVIDO: product-card */}
+
+        <div className="action-grid">
+            <button 
+                className={`action-btn copy-action ${copySuccess ? 'success-animation' : ''}`}
+                onClick={copyMessage}
+            >
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                {copySuccess ? 'COPIADO!' : 'COPIAR'}
+            </button>
+            <button 
+                className="action-btn whatsapp-action"
+                onClick={shareWhatsApp}
+            >
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413"/>
+                </svg>
+                WHATSAPP
+            </button>
+        </div>
+    </aside>
+)}
+</div>
+);
+}
+
+export default App;

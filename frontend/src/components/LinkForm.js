@@ -5,7 +5,6 @@ const LinkForm = ({ recentLinks = [] }) => {
   const [url, setUrl] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   
-  // Efeito de animação ao carregar
   useEffect(() => {
     const input = document.querySelector('.form-input');
     if (input) {
@@ -37,7 +36,7 @@ const LinkForm = ({ recentLinks = [] }) => {
         onChange={handleChange}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        placeholder="Cole o link da Amazon ou Mercado Livre"
+        placeholder="https://mercadolivre.com/sec/ZXorKJ3"
         list="url-history"
       />
       {recentLinks && recentLinks.length > 0 && (
