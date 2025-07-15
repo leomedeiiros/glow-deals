@@ -103,13 +103,8 @@ const addToHistory = (value, setter, currentArray, maxItems = 10) => {
   setter(newArray);
 };
 
-// Função para processar dados do produto
+// Função para processar dados do produto - CORREÇÃO 1 REMOVIDA
 const handleProductDataReceived = (data, url) => {
-  // CORREÇÃO 1: Limpar ref do preview antes de processar novo produto
-  if (messagePreviewRef.current) {
-    messagePreviewRef.current.innerHTML = '';
-  }
-  
   if (data) {
     console.log("Dados originais do produto:", {
       currentPrice: data.currentPrice,
@@ -416,7 +411,7 @@ const disableEditing = () => {
   }
 };
 
-// Processamento em lote
+// Processamento em lote - CORREÇÃO 2 REMOVIDA
 const processBatchLinks = async () => {
   if (!batchLinks.trim()) {
     setError('Insira pelo menos um link para processamento em lote');
@@ -776,7 +771,7 @@ const shareWhatsApp = async () => {
      });
  };
 
- // Extrair dados
+ // Extrair dados - CORREÇÃO 3 MANTIDA
  const handleExtract = async () => {
    if (!url) {
      setError('Por favor, insira um link de afiliado.');
@@ -819,13 +814,14 @@ const shareWhatsApp = async () => {
          <h1 className="main-title">Deals Generator</h1>
          <p className="main-subtitle">⚡ Seu gerador de copy para afiliados: mensagens prontas em segundos!</p>
        </div>
-{/* Seção Informações da Promoção */}
+
+       {/* Seção Informações da Promoção */}
        <div className="form-section">
          <div className={`section-header ${!infoSectionOpen ? 'collapsed' : ''}`} onClick={() => toggleSection('info')}>
            <svg className="section-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
            </svg>
-<span className="section-title">Informações da Promoção</span>
+           <span className="section-title">Informações da Promoção</span>
            <svg className="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
            </svg>
