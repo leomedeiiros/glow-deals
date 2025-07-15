@@ -430,13 +430,6 @@ const processBatchLinks = async () => {
     return;
   }
   
-  // CORREÇÃO 2: Limpar preview principal quando inicia processamento em lote
-  setProductData(null);
-  setFinalMessage('');
-  if (messagePreviewRef.current) {
-    messagePreviewRef.current.innerHTML = '';
-  }
-  
   setBatchProcessing(true);
   setBatchResults([]);
   setBatchProgress(0);
